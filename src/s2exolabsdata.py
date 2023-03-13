@@ -3,6 +3,7 @@ from pathlib import Path
 import rasterio
 from rasterio.windows import Window
 import numpy as np
+import matplotlib.pyplot as plt
 
 class S2ExolabData(S2Data):
     def __init__(self, dataset_dir = Path("data/ExoLabs_classification_S2/"), data_dir = Path("data/ExoLabs_classification_S2/data/")):
@@ -19,7 +20,7 @@ class S2ExolabData(S2Data):
         """
         with rasterio.open(self.images[image], "r") as f:
             img = f.read(window=Window(1, 1, self.NATIVE_DIM, self.NATIVE_DIM))
-            img = self._convert_to_resolution(img, pixel_resolution)
+            img = self._convert_full_img_to_resolution(img, pixel_resolution)
             return img
         
     def _convert_channels(self, images: np.ndarray):
@@ -27,17 +28,30 @@ class S2ExolabData(S2Data):
         converts the images from categorical labels to multi-channel: 
         creates new channels with values of 0/1 where the appropriate label is met.
 
-        returns an array with 2 channels: [no-snow, snow]
+        returns an array with 2 channels: [no-snow, snow] and 4 dims in total: [images, channels, width, height]
         """
-        no_snow = images[1] == 1
-        snow = images[1] == 2
-        return np.stack([no_snow, snow])
+        no_snow = images[:, 1] == 1
+        snow = images[:, 1] == 2
+        return np.stack([no_snow, snow]).swapaxes(0, 1)
 
+    def _normalize(self, imgs: np.ndarray):
+        """
+        Exolabs data is already in range [0, 1] after channel conversion
+        """
+        ret = imgs.astype(np.float32)
+        return ret
+
+    def preprocess(self, imgs: np.ndarray) -> np.ndarray:
+        imgs = self._convert_channels(imgs)
+        return self._normalize(imgs)
 
 def _test():
     data = S2ExolabData()
-    data._load_and_save_dataset(data.array_locations[10])
-    data._create_smaller_resolutions()
+    # data._load_and_save_dataset(data.array_locations[10])
+    # data._create_smaller_resolutions()
+    arrays = data.load_arrays(60, ["20210705"])
+    arrays = data._convert_channels(arrays)
+    data._normalize(arrays)
 
 
 if __name__ == "__main__":

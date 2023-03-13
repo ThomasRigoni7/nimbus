@@ -5,8 +5,8 @@ from tqdm import tqdm
 import shutil
 
 
-extracted = Path("raw/raw_extracted/")
-processed = Path("raw/raw_processed/")
+extracted = Path("data/raw/raw_extracted/")
+processed = Path("data/raw/raw_processed/")
 levels = ["raw_data_32TNS_1C", "raw_data_32TNS_2A"]
 
 def write_to_single_folder(channels: list[Path], snow_mask: Path, cloud_mask: Path, dst_folder: Path):

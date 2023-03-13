@@ -39,15 +39,42 @@ class S2RawData(S2Data):
             with rasterio.open(b, 'r') as f:
                 img = f.read(1)
                 # check if interpolation is necessary
-                img = self._convert_to_resolution(img, pixel_resolution)
+                img = self._convert_full_img_to_resolution(img, pixel_resolution)
                 l.append(img)
         res = np.stack(l)
         return res
 
+    def _standardize(self, imgs: np.ndarray) -> np.ndarray:
+        """
+        Standardize the images to have 0 mean and 1 std.
+        Computes the mean and std for every channel, then standardizes.
+        """
+        mean = imgs.mean(axis=(0, 2, 3))
+        std = imgs.std(axis=(0, 2, 3))
+        imgs = (imgs.swapaxes(1, -1) - mean) / std
+        return imgs.swapaxes(-1, 1).clip(-5, 5)
+
+    def _normalize(self, imgs: np.ndarray) -> np.ndarray:
+        """
+        The raw data contains cloud and snow probabilities in the (approximate) range [0, 100] -> normalize,
+        the other channels are in (approximate) range [0, 10000] 
+        """
+        cld_snw_probs = imgs[:, 0:2]
+        other_bands = imgs[:, 2:]
+        cld_snw_probs = (cld_snw_probs.astype(np.float32) / 100).clip(0, 1)
+
+        other_bands = (other_bands.astype(np.float32) / 15000).clip(0, 1)
+        # other_bands = self._standardize(other_bands)
+        res = np.hstack([cld_snw_probs, other_bands])
+        return res
+
+    def preprocess(self, imgs: np.ndarray) -> np.ndarray:
+        return self._normalize(imgs)
+
 
 def _test():
     s2data = S2RawData()
-    s2data.load_arrays(resolution=60)
+    s2data._load_and_save_dataset(512, 32)
 
 if __name__ == "__main__":
     _test()

@@ -1,9 +1,9 @@
 from pathlib import Path
 
-RAW_DIR = Path("raw/raw_processed/")
-EXOLABS_DIR = Path("ExoLabs_classification_S2/")
-CLOUDLESS_DIR = Path("S2cloudless/data/")
-DYNAMICWORLD_DIR = Path("DynamicWorld/data/")
+RAW_DIR = Path("data/raw/raw_processed/")
+EXOLABS_DIR = Path("data/ExoLabs_classification_S2/")
+CLOUDLESS_DIR = Path("data/S2cloudless/data/")
+DYNAMICWORLD_DIR = Path("data/DynamicWorld/data/")
 
 
 def check_raw_included(raw_dir: Path, other_dir: Path):

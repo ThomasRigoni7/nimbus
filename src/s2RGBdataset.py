@@ -24,18 +24,16 @@ class S2RGBDataset(S2Dataset):
         raw, cloudless, exolabs = sample_data
         
         rgb = raw[4:1:-1]
-        s = self.exolabs_data._convert_channels(exolabs)
-        no_snow, snow = s[0], s[1]
-        label = np.stack([cloudless, snow, no_snow])
+        label = np.concatenate([cloudless[np.newaxis, :], exolabs], axis=0)
 
-        return rgb, label
+        return torch.from_numpy(rgb.copy()), torch.from_numpy(label)
 
 
 
 def _test():
     import matplotlib.pyplot as plt
     s2data = S2RGBDataset()
-    rgb, label = s2data[1]
+    rgb, label = s2data[40]
     plt.imsave("rgb.jpg", rgb.transpose(1, 2, 0))
 
 if __name__ == "__main__":

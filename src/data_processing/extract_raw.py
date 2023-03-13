@@ -2,8 +2,8 @@ import zipfile
 from pathlib import Path
 from tqdm import tqdm
 
-original_folder = Path("raw/")
-extracted_folder = Path("raw/raw_extracted/")
+original_folder = Path("data/raw/")
+extracted_folder = Path("data/raw/raw_extracted/")
 
 folders_with_zip = ["raw_data_32TNS_1C", "raw_data_32TNS_2A"]
 

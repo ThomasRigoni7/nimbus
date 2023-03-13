@@ -3,8 +3,12 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 from abc import ABC, abstractmethod
+from itertools import product
 
 class S2Data(ABC):
+    """
+    Base class for all the image data classes, it provides common methods to manipulate the images.
+    """
     NATIVE_DIM = 10980
     NATIVE_RESOLUTION = 10
     def __init__(self, dataset_dir: str | Path):
@@ -25,13 +29,20 @@ class S2Data(ABC):
         pass
 
     @abstractmethod
-    def _normalize(self, imgs: np.ndarray):
+    def _normalize(self, imgs: np.ndarray) -> np.ndarray:
         """
         Normalize the images to have pixels in range [0, 1] of type float
         """
         pass
 
-    def _convert_to_resolution(self, img: np.ndarray, pixel_resolution: int = 10) -> np.ndarray:
+    @abstractmethod
+    def preprocess(self, imgs: np.ndarray) -> np.ndarray:
+        """
+        Runs preprocessing steps on the data after loading np arrays (like normalization/band convertion)
+        """
+        pass
+
+    def _convert_full_img_to_resolution(self, img: np.ndarray, pixel_resolution: int = 10) -> np.ndarray:
         img_dim = int((self.NATIVE_RESOLUTION * self.NATIVE_DIM) / pixel_resolution) 
         if img.shape != (img_dim, img_dim):
             # images must be in shape [height, width, channels]
@@ -43,24 +54,63 @@ class S2Data(ABC):
             if img.ndim == 3:
                 img = img.transpose(2,0,1).squeeze()
         return img
+    
+    def _cut_image(self, image: np.ndarray, cut_dim: int = 512, cut_overlap: int = 32) -> dict[str, np.ndarray]:
+        """
+        Cuts the image in images of size cut_dim and overlap cut_overlap.
+        image is a 3-dim array of shape [channels, height, width]
+        """
+        print(image.shape)
+        images = {}
+        p = 0
+        new_image_coordinates = []
+        while p < image.shape[1]:
+            p = min(image.shape[1] - cut_dim, p)
+            new_image_coordinates.append(p)
+            if p == image.shape[1] - cut_dim:
+                break
+            p += cut_dim - cut_overlap
 
-    def _load_and_save_dataset(self, folder: Path):
-        print(f"Loading and saving dataset in {str(folder)}")
-        folder.mkdir(exist_ok=True, parents=True)
+        print(new_image_coordinates)
+        for x, y in product(new_image_coordinates, new_image_coordinates):
+            cut = image[:, x:x+cut_dim, y:y+cut_dim]
+            if cut.sum() != 0:
+                images[f"{x}_{y}"] = cut
+        return images
+
+
+    def _load_and_save_dataset(self, cut_dim: int = None, cut_overlap: int = None, resolutions=[10, 20, 60]):
+        """
+        Loads the dataset from the original images and saves them as arrays in the specified resolutions.
+        If cut_dim is specified then cuts the original images and saves the sub-images in a folder.
+        """
+        print(f"Loading and saving dataset in {[self.array_locations[res] for res in resolutions]}")
+        for res in resolutions:
+            self.array_locations[res].mkdir(exist_ok=True, parents=True)
         for id in tqdm(self.images):
-            img = self._load_full_image(id)
-            self._save_image(img, folder / id)
+            full_img = self._load_full_image(id, pixel_resolution=10)
+            for res in resolutions:
+                img = self._convert_full_img_to_resolution(full_img, res)
+                if cut_dim is None:
+                    self._save_image(img, self.array_locations[res] / id)
+                else:
+                    (self.array_locations[res] / id).mkdir(exist_ok=True, parents=True)
+                    imgs = self._cut_image(img, cut_dim, cut_overlap)
+                    print("Saving in:", self.array_locations[res] / id)
+                    for coord, img in imgs.items():
+                        self._save_image(img, self.array_locations[res] / id / coord)
 
     def load_arrays(self, resolution: int = 10, ids_to_load: list[str] = None) -> np.ndarray:
         """
-        Loads the full data into memory and returns it
+        Loads the specified arrays into memory and returns it. If not specified, load the full data.
         """
         print(f"Loading arrays with {resolution}m resolution...")
         data = []
         if ids_to_load is None:
             for f in tqdm(list(self.array_locations[resolution].glob("*"))):
-                img = np.load(f)
-                data.append(img)
+                if f.is_file():
+                    img = np.load(f)
+                    data.append(img)
         else:
             for id in tqdm(ids_to_load):
                 data.append(self.load_array(id, resolution=resolution))
@@ -86,7 +136,7 @@ class S2Data(ABC):
         for f in tqdm(original_arrays):
             img = np.load(f)
             for res in resolutions:
-                scaled_img = self._convert_to_resolution(img, res)
+                scaled_img = self._convert_full_img_to_resolution(img, res)
                 self._save_image(scaled_img, self.array_locations[res] / f.name)
 
     def _save_image(self, image: np.ndarray, path: Path):
