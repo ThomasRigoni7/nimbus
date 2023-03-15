@@ -6,8 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class S2CloudlessData(S2Data):
-    def __init__(self, dataset_dir = Path("data/S2cloudless/"), data_dir = Path("data/S2cloudless/data/")):
-        super().__init__(dataset_dir)
+    def __init__(self, dataset_dir = Path("data/S2cloudless/"), data_dir = Path("data/S2cloudless/data/"), resolution: int = 10):
+        super().__init__(dataset_dir, resolution)
         image_paths = list(data_dir.glob("*.tif"))
         for image_path in image_paths:
             date = image_path.name[13:21]
@@ -29,15 +29,19 @@ class S2CloudlessData(S2Data):
         return ret
 
     def preprocess(self, imgs: np.ndarray) -> np.ndarray:
+        if imgs.ndim == 2:
+            imgs = imgs[None, None:]
+        elif imgs.ndim == 3:
+            imgs = imgs[None, :]
         return self._normalize(imgs)
 
 
 def _test():
     data = S2CloudlessData()
-    # data._load_and_save_dataset(data.array_locations[10])
-    # data._create_smaller_resolutions()
-    arrays = data.load_arrays(60, ids_to_load=["20210104"])
-    cut_images = data._cut_image(arrays[0])
+    array = data.load_array("20210101/0_0")
+    print("Single array shape:", array.shape)
+    arrays = data.load_arrays(ids_to_load=["20210101/0_0", "20210101/0_480"])
+    print("Multiple arrays shape:", arrays.shape)
 
 
 if __name__ == "__main__":

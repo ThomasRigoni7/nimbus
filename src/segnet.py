@@ -1,8 +1,10 @@
 import torch
 import torch.nn as nn
+import pytorch_lightning as pl
 
 
-class SegNetLite(nn.Module):
+
+class SegNetLite(pl.LightningModule):
 
     def __init__(self, kernel_sizes=[3, 3, 3, 3], down_filter_sizes=[32, 64, 128, 256],
             up_filter_sizes=[128, 64, 32, 32], conv_paddings=[1, 1, 1, 1],
@@ -91,3 +93,18 @@ class SegNetLite(nn.Module):
         # last convolution for classification:
         x = self.conv1x1(x)
         return x
+    
+    def configure_optimizers(self):
+        return torch.optim.Adam(self.parameters(), lr=1e-3)
+    
+    def training_step(self, batch, batch_idx):
+        data, label = batch
+        pred = self(data)
+        loss = torch.nn.functional.cross_entropy(pred, label)
+        return loss
+    
+    def validation_step(self, batch, batch_idx):
+        loss = self.training_step(batch, batch_idx)
+        self.log("val_loss", loss)
+    
+    

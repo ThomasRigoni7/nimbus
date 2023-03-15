@@ -11,7 +11,7 @@ class S2Data(ABC):
     """
     NATIVE_DIM = 10980
     NATIVE_RESOLUTION = 10
-    def __init__(self, dataset_dir: str | Path):
+    def __init__(self, dataset_dir: str | Path, resolution: int):
         super().__init__()
         self.dataset_dir = Path(dataset_dir)
         self.array_locations = {
@@ -20,6 +20,13 @@ class S2Data(ABC):
             60 : self.dataset_dir / "arrays60m/"
         }
         self.images : dict[str, Path] = {}
+        self.cut_images : dict[str, Path] = {}
+        if self.array_locations[resolution].exists():
+            cut_images_paths : list[Path] = list(self.array_locations[resolution].glob("*/*"))
+            for path in cut_images_paths:
+                if path.is_file():
+                    id = str(path.relative_to(path.parent.parent).with_suffix(""))
+                    self.cut_images[id] = path
 
     @abstractmethod
     def _load_full_image(self, image: str, pixel_resolution: int = 10) -> np.ndarray:
@@ -39,20 +46,32 @@ class S2Data(ABC):
     def preprocess(self, imgs: np.ndarray) -> np.ndarray:
         """
         Runs preprocessing steps on the data after loading np arrays (like normalization/band convertion)
+
+        Returns data in the shape [num_images, num_channels, height, width]
         """
         pass
 
     def _convert_full_img_to_resolution(self, img: np.ndarray, pixel_resolution: int = 10) -> np.ndarray:
+        """
+        Converts a full tile image into a specified resolution with interpolation. Will produce wrong results if used with cut images.
+
+        The shape of img must be either [height, width] or [num_channels, height, width].
+        Always returns an array with shape [num_channels, height, width].
+        """
+        if img.ndim > 3:
+            raise ValueError(f"img to convert must have 2 or 3 dims, found {img.ndim}.")
         img_dim = int((self.NATIVE_RESOLUTION * self.NATIVE_DIM) / pixel_resolution) 
-        if img.shape != (img_dim, img_dim):
-            # images must be in shape [height, width, channels]
-            if img.ndim == 2:
-                img = np.expand_dims(img, axis=2)
-            elif img.ndim == 3:
-                img = img.transpose(1,2,0)
-            img = cv2.resize(img[:None], (img_dim, img_dim), interpolation=cv2.INTER_LINEAR)
-            if img.ndim == 3:
-                img = img.transpose(2,0,1).squeeze()
+        # images must be in shape [height, width, channels] for cv2 resize
+        if img.ndim == 2:
+            img = np.expand_dims(img, axis=2)
+        elif img.ndim == 3:
+            img = img.transpose(1,2,0)
+        if img.shape[0] != img_dim or img.shape[1] != img_dim:
+            img = cv2.resize(img, (img_dim, img_dim), interpolation=cv2.INTER_LINEAR)
+        if img.ndim == 2:
+            img = np.expand_dims(img, axis=0)
+        elif img.ndim == 3:
+            img = img.transpose(2,0,1)
         return img
     
     def _cut_image(self, image: np.ndarray, cut_dim: int = 512, cut_overlap: int = 32) -> dict[str, np.ndarray]:
@@ -60,7 +79,6 @@ class S2Data(ABC):
         Cuts the image in images of size cut_dim and overlap cut_overlap.
         image is a 3-dim array of shape [channels, height, width]
         """
-        print(image.shape)
         images = {}
         p = 0
         new_image_coordinates = []
@@ -71,7 +89,6 @@ class S2Data(ABC):
                 break
             p += cut_dim - cut_overlap
 
-        print(new_image_coordinates)
         for x, y in product(new_image_coordinates, new_image_coordinates):
             cut = image[:, x:x+cut_dim, y:y+cut_dim]
             if cut.sum() != 0:
@@ -103,25 +120,33 @@ class S2Data(ABC):
     def load_arrays(self, resolution: int = 10, ids_to_load: list[str] = None) -> np.ndarray:
         """
         Loads the specified arrays into memory and returns it. If not specified, load the full data.
+
+        The shape of the returned arrays is [num_images, num_channels, height, width]
         """
         print(f"Loading arrays with {resolution}m resolution...")
         data = []
         if ids_to_load is None:
-            for f in tqdm(list(self.array_locations[resolution].glob("*"))):
+            for f in tqdm(list(self.array_locations[resolution].glob("*/*"))):
                 if f.is_file():
                     img = np.load(f)
                     data.append(img)
         else:
             for id in tqdm(ids_to_load):
                 data.append(self.load_array(id, resolution=resolution))
-        ret = np.stack(data)
+        ret = np.concatenate(data, axis=0)
         return ret
     
     def load_array(self, id: str, resolution: int = 10):
         """
         Loads the specified data point into memory and returns it.
+
+        The shape of the returned array is [1, num_channels, height, width]
         """
         img = np.load(self.array_locations[resolution] / f"{id}.npy")
+        if img.ndim == 2:
+            img = img[None, None, :]
+        elif img.ndim == 3:
+            img = img[None, :]
         return img
 
     def _create_smaller_resolutions(self, resolutions:list[int] = [20, 60]):

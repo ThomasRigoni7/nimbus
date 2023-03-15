@@ -4,8 +4,8 @@ import rasterio
 import numpy as np
 
 class S2RawData(S2Data):
-    def __init__(self, dataset_dir = Path("data/raw/"), data_dir = Path("data/raw/raw_processed/")):
-        super().__init__(dataset_dir)
+    def __init__(self, dataset_dir = Path("data/raw/"), data_dir = Path("data/raw/raw_processed/"), resolution: int = 10):
+        super().__init__(dataset_dir, resolution)
         image_paths = list(data_dir.glob("*"))
         for image_path in image_paths:
             date = image_path.name[:8]
@@ -57,7 +57,7 @@ class S2RawData(S2Data):
     def _normalize(self, imgs: np.ndarray) -> np.ndarray:
         """
         The raw data contains cloud and snow probabilities in the (approximate) range [0, 100] -> normalize,
-        the other channels are in (approximate) range [0, 10000] 
+        the other channels are in (approximate) range [0, 15000] 
         """
         cld_snw_probs = imgs[:, 0:2]
         other_bands = imgs[:, 2:]
@@ -74,7 +74,7 @@ class S2RawData(S2Data):
 
 def _test():
     s2data = S2RawData()
-    s2data._load_and_save_dataset(512, 32)
+    # s2data._load_and_save_dataset(512, 32)
 
 if __name__ == "__main__":
     _test()

@@ -1,38 +1,27 @@
 import torch
-import torch.nn as nn
 from segnet import SegNetLite
 from s2RGBdataset import S2RGBDataset
-from torch.utils.data import DataLoader
-from torch.optim import Adam
-from tqdm import tqdm
+from torch.utils.data import DataLoader, random_split
 import matplotlib.pyplot as plt
+import pytorch_lightning as pl
 
-dataset = S2RGBDataset()
-dataloader = DataLoader(dataset, 24)
-epochs = 10
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+dataset = S2RGBDataset(resolution=60, load_into_memory=False)
+train_dataset, val_dataset = random_split(dataset, [0.7, 0.3])
+train_dataloader = DataLoader(train_dataset, 24)
+val_dataloader = DataLoader(val_dataset, 24)
 model = SegNetLite()
-model = model.to(device)
-loss_fn = nn.CrossEntropyLoss()
-optimizer = Adam(model.parameters(), 1e-3)
 
-for e in range(epochs):
-    print(f"Epoch {e+1}/{epochs}:")
-    for batch in tqdm(dataloader):
-        data, labels = batch
-        data = data.to(device)
-        labels = labels.to(device)
-        preds = model(data)
-        
-        l = loss_fn(preds, labels)
-        l.backward()
-        optimizer.step()
+trainer = pl.Trainer(logger=None, max_epochs=30, gpus=1)
+trainer.fit(model, train_dataloader, val_dataloader)
+
 
 first_image = dataset[0]
+device = torch.device("cuda")
+model = model.to(device)
 data, labels = first_image
-preds = model(data)
-plt.imsave("data.png", data)
-plt.imsave("prediction.png", preds)
-plt.imsave("label.png", labels)
-
-
+data = data.to(device)
+labels = labels.to(device)
+preds = model(data[None,:]).squeeze()
+plt.imsave("data.png", data.permute(1, 2, 0).cpu().detach().numpy())
+plt.imsave("prediction.png", preds.permute(1, 2, 0).clip(0, 1).cpu().detach().numpy())
+plt.imsave("label.png", labels.permute(1, 2, 0).cpu().detach().numpy())

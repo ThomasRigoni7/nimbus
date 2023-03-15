@@ -6,8 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class S2ExolabData(S2Data):
-    def __init__(self, dataset_dir = Path("data/ExoLabs_classification_S2/"), data_dir = Path("data/ExoLabs_classification_S2/data/")):
-        super().__init__(dataset_dir)
+    def __init__(self, dataset_dir = Path("data/ExoLabs_classification_S2/"), data_dir = Path("data/ExoLabs_classification_S2/data/"), resolution: int = 10):
+        super().__init__(dataset_dir, resolution)
         image_paths = list(data_dir.glob("*.tif"))
         for image_path in image_paths:
             date = image_path.name[9:19].replace("-", "")
@@ -47,12 +47,7 @@ class S2ExolabData(S2Data):
 
 def _test():
     data = S2ExolabData()
-    # data._load_and_save_dataset(data.array_locations[10])
-    # data._create_smaller_resolutions()
-    arrays = data.load_arrays(60, ["20210705"])
-    arrays = data._convert_channels(arrays)
-    data._normalize(arrays)
-
+    data._load_and_save_dataset(512, 32)
 
 if __name__ == "__main__":
     _test()
