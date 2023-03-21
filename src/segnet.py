@@ -8,7 +8,7 @@ class SegNetLite(pl.LightningModule):
 
     def __init__(self, kernel_sizes=[3, 3, 3, 3], down_filter_sizes=[32, 64, 128, 256],
             up_filter_sizes=[128, 64, 32, 32], conv_paddings=[1, 1, 1, 1],
-            pooling_kernel_sizes=[2, 2, 2, 2], pooling_strides=[2, 2, 2, 2], **kwargs):
+            pooling_kernel_sizes=[2, 2, 2, 2], pooling_strides=[2, 2, 2, 2], out_classes = 3, **kwargs):
         """Initialize SegNet Module
 
         Args:
@@ -69,7 +69,7 @@ class SegNetLite(pl.LightningModule):
         self.relu = nn.ReLU(True)
 
         # Implement a final 1x1 convolution to to get the logits of 11 classes (background + 10 digits)
-        self.conv1x1 = nn.Conv2d(up_filter_sizes[-1], 3, 1)
+        self.conv1x1 = nn.Conv2d(up_filter_sizes[-1], out_classes, 1)
 
     def forward(self, x):
         # forward pass the down modules

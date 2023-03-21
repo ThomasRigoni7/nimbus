@@ -32,7 +32,7 @@ class S2ExolabData(S2Data):
         """
         no_snow = images[:, 1] == 1
         snow = images[:, 1] == 2
-        return np.stack([no_snow, snow]).swapaxes(0, 1)
+        return np.stack([no_snow, snow]).swapaxes(0, 1).astype(np.float32)
 
     def _normalize(self, imgs: np.ndarray):
         """
@@ -42,7 +42,7 @@ class S2ExolabData(S2Data):
         return ret
 
     def preprocess(self, imgs: np.ndarray) -> np.ndarray:
-        imgs = self._convert_channels(imgs)
+        # imgs = self._convert_channels(imgs)
         return self._normalize(imgs)
 
 def _test():

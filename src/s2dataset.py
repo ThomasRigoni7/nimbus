@@ -13,15 +13,27 @@ class S2Dataset(Dataset):
         self.resolution = resolution
         self.dataset_list: list[S2Data] = [raw_data] + other_dataset_list
         for id in raw_data.images:
-            self.images[id] = {}
+            images = {}
             for dataset in self.dataset_list:
-                self.images[id][dataset.__class__.__name__] = dataset.images[id]
+                images[dataset.__class__.__name__] = dataset.images.get(id, None)
+            if None not in images.values():
+                self.images[id] = images
         for id in raw_data.cut_images:
-            self.cut_images[id] = {}
+            cut_images = {}
             for dataset in self.dataset_list:
-                self.cut_images[id][dataset.__class__.__name__] = dataset.cut_images[id]
+                image_path = dataset.cut_images.get(id, None)
+                cut_images[dataset.__class__.__name__] = image_path
+                if image_path is None:
+                    print("None with ID:", id)
+                    print(list(cut_images.values()))
+            if None in list(cut_images.values()):
+                print("Not added ID:", id)
+            else:
+                self.cut_images[id] = cut_images
         self.image_ids = list(self.images.keys())
+        self.image_ids.sort()
         self.cut_image_ids = list(self.cut_images.keys())
+        self.cut_image_ids.sort()
 
         # load the full data with the specified resolution
         if load_into_memory:
@@ -36,7 +48,10 @@ class S2Dataset(Dataset):
                     self.data[dataset.__class__.__name__] = dataset.preprocess(data)
 
     def __len__(self):
-        return len(self.images)
+        if self.use_cut_images:
+            return len(self.cut_images)
+        else:
+            return len(self.images)
     
     def __getitem__(self, index) -> list[np.ndarray]:
         """
@@ -47,6 +62,7 @@ class S2Dataset(Dataset):
             for dataset in self.dataset_list:
                 ret.append(self.data[dataset.__class__.__name__][index])
         else:
+            # print("Image:", self.cut_image_ids[index])
             for dataset in self.dataset_list:
                 if self.use_cut_images:
                     data = dataset.load_array(resolution=self.resolution, id=self.cut_image_ids[index])

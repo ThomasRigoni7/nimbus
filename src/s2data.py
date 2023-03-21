@@ -106,6 +106,7 @@ class S2Data(ABC):
             self.array_locations[res].mkdir(exist_ok=True, parents=True)
         for id in tqdm(self.images):
             full_img = self._load_full_image(id, pixel_resolution=10)
+            full_img = self._convert_channels(full_img[None, :]).squeeze(0)
             for res in resolutions:
                 img = self._convert_full_img_to_resolution(full_img, res)
                 if cut_dim is None:
