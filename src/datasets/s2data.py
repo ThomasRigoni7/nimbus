@@ -96,7 +96,7 @@ class S2Data(ABC):
         return images
 
 
-    def _load_and_save_dataset(self, cut_dim: int = None, cut_overlap: int = None, resolutions=[10, 20, 60]):
+    def _load_and_save_dataset(self, cut_dim: int = None, cut_overlap: int = None, resolutions=[10, 20, 60], convert_channels:bool=False):
         """
         Loads the dataset from the original images and saves them as arrays in the specified resolutions.
         If cut_dim is specified then cuts the original images and saves the sub-images in a folder.
@@ -106,7 +106,8 @@ class S2Data(ABC):
             self.array_locations[res].mkdir(exist_ok=True, parents=True)
         for id in tqdm(self.images):
             full_img = self._load_full_image(id, pixel_resolution=10)
-            full_img = self._convert_channels(full_img[None, :]).squeeze(0)
+            if convert_channels:
+                full_img = self._convert_channels(full_img[None, :]).squeeze(0)
             for res in resolutions:
                 img = self._convert_full_img_to_resolution(full_img, res)
                 if cut_dim is None:
@@ -118,21 +119,27 @@ class S2Data(ABC):
                     for coord, img in imgs.items():
                         self._save_image(img, self.array_locations[res] / id / coord)
 
-    def load_arrays(self, resolution: int = 10, ids_to_load: list[str] = None) -> np.ndarray:
+    def load_arrays(self, resolution: int = 10, ids_to_load: list[str] = None, verbose:bool=True) -> np.ndarray:
         """
         Loads the specified arrays into memory and returns it. If not specified, load the full data.
 
         The shape of the returned arrays is [num_images, num_channels, height, width]
         """
-        print(f"Loading arrays with {resolution}m resolution...")
+        if verbose:
+            print(f"Loading arrays with {resolution}m resolution...")
         data = []
         if ids_to_load is None:
-            for f in tqdm(list(self.array_locations[resolution].glob("*/*"))):
+            iterator = list(self.array_locations[resolution].glob("*/*"))
+            if verbose:
+                iterator = tqdm(iterator)
+            for f in iterator:
                 if f.is_file():
                     img = np.load(f)
                     data.append(img)
         else:
-            for id in tqdm(ids_to_load):
+            if verbose:
+                ids_to_load = tqdm(ids_to_load)
+            for id in ids_to_load:
                 data.append(self.load_array(id, resolution=resolution))
         ret = np.concatenate(data, axis=0)
         return ret
@@ -149,6 +156,16 @@ class S2Data(ABC):
         elif img.ndim == 3:
             img = img[None, :]
         return img
+    
+    def load_preprocessed_arrays(self, resolution: int = 10, ids_to_load: list[str] = None, verbose:bool=True):
+        """
+        Loads the specified arrays into memory, applies preprocess and returns it.
+
+        The shape of the returned array is [num_images, num_channels, height, width]
+        """
+        images = self.load_arrays(resolution = resolution, ids_to_load=ids_to_load, verbose=verbose)
+        return self.preprocess(images)
+
 
     def _create_smaller_resolutions(self, resolutions:list[int] = [20, 60]):
         """

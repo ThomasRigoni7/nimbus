@@ -1,19 +1,14 @@
 import torch
-from s2rawdata import S2RawData
-from s2cloudlessdata import S2CloudlessData
-from s2exolabsdata import S2ExolabData
-from s2dataset import S2Dataset
-import numpy as np
+from datasets.s2rawdata import S2RawData
+from datasets.s2dataset import S2Dataset
 
-class S2RGBCloudlessExolabDataset(S2Dataset):
+class S2RGBDataset(S2Dataset):
     """
     Dataset that returns RGB values as data, 3-dim labels of dim [cloud, no-snow, snow] are combined from S2cloudless and exolabs.
     """
     def __init__(self, resolution:int=10, load_into_memory:bool=False):
         raw_data = S2RawData(resolution=resolution)
-        cloudless_data = S2CloudlessData(resolution=resolution)
-        exolabs_data = S2ExolabData(resolution=resolution)
-        super().__init__(raw_data, [cloudless_data, exolabs_data], resolution=resolution, load_into_memory=load_into_memory)
+        super().__init__(raw_data, [], resolution=resolution, load_into_memory=load_into_memory)
 
     def __len__(self):
         if self.use_cut_images:
@@ -24,12 +19,12 @@ class S2RGBCloudlessExolabDataset(S2Dataset):
     def __getitem__(self, index) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Returns a tuple containing (RGB image, label), where the RGB image is taken from the raw data,
-        the label is 3-dimentional [cloud, no-snow, snow] built using s2cloudless and Exolabs snow classification.
+        the label is 2-dimentional [cloud, snow] built using the provided 2A masks.
         """
         sample_data = super().__getitem__(index)
-        raw, cloudless, exolabs = sample_data
+        raw = sample_data[0]
         rgb = raw[4:1:-1]
-        label = np.concatenate([cloudless, exolabs], axis=0)
+        label = raw[0:2]
 
         return torch.from_numpy(rgb.copy()), torch.from_numpy(label)
 
@@ -37,7 +32,7 @@ class S2RGBCloudlessExolabDataset(S2Dataset):
 
 def _test():
     import matplotlib.pyplot as plt
-    s2data = S2RGBCloudlessExolabDataset()
+    s2data = S2RGBDataset()
     rgb, label = s2data[40]
     print(rgb.shape)
     print(label.shape)

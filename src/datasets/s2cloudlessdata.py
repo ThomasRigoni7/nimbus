@@ -1,4 +1,4 @@
-from s2data import S2Data
+from datasets.s2data import S2Data
 from pathlib import Path
 import rasterio
 from rasterio.windows import Window

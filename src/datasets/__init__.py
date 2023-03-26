@@ -1,0 +1,3 @@
+from datasets.s2dataset import S2Dataset
+from datasets.s2RawCEdataset import S2RawCloudlessExolabDataset
+from datasets.s2RGBdataset import S2RGBDataset

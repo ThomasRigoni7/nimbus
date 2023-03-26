@@ -1,4 +1,4 @@
-from s2data import S2Data
+from datasets.s2data import S2Data
 from pathlib import Path
 import rasterio
 from rasterio.windows import Window
@@ -47,7 +47,7 @@ class S2ExolabData(S2Data):
 
 def _test():
     data = S2ExolabData()
-    data._load_and_save_dataset(512, 32)
+    data._load_and_save_dataset(512, 32, convert_channels=True)
 
 if __name__ == "__main__":
     _test()

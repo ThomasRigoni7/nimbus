@@ -8,7 +8,7 @@ class SegNetLite(pl.LightningModule):
 
     def __init__(self, kernel_sizes=[3, 3, 3, 3], down_filter_sizes=[32, 64, 128, 256],
             up_filter_sizes=[128, 64, 32, 32], conv_paddings=[1, 1, 1, 1],
-            pooling_kernel_sizes=[2, 2, 2, 2], pooling_strides=[2, 2, 2, 2], out_classes = 3, **kwargs):
+            pooling_kernel_sizes=[2, 2, 2, 2], pooling_strides=[2, 2, 2, 2], out_classes:int = 3, class_weights:list=None, **kwargs):
         """Initialize SegNet Module
 
         Args:
@@ -22,6 +22,7 @@ class SegNetLite(pl.LightningModule):
         super(SegNetLite, self).__init__()
         self.num_down_layers = len(kernel_sizes)
         self.num_up_layers = len(kernel_sizes)
+        self.class_weights = class_weights
 
         input_size = 3 # initial number of input channels
         # Construct downsampling layers.
@@ -100,7 +101,7 @@ class SegNetLite(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         data, label = batch
         pred = self(data)
-        loss = torch.nn.functional.cross_entropy(pred, label)
+        loss = torch.nn.functional.cross_entropy(pred, label, weight=self.class_weights)
         return loss
     
     def validation_step(self, batch, batch_idx):

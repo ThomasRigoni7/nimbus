@@ -1,35 +1,11 @@
 import torch
-import torch.nn as nn
+from data_augmentation import SegmentationTransforms
 from segnet import SegNetLite
-from s2RGBdataset import S2RGBDataset
-from s2RGBCEdataset import S2RGBCloudlessExolabDataset
+from datasets import S2RawCloudlessExolabDataset, S2Dataset
 from torch.utils.data import DataLoader, random_split
 import matplotlib.pyplot as plt
 import pytorch_lightning as pl
 import numpy as np
-
-class DeepLabV3Baseline(pl.LightningModule):
-    def __init__(self, out_channels: int = 3):
-        super().__init__()
-        self.backbone = torch.hub.load('pytorch/vision:v0.10.0', 'deeplabv3_resnet50', pretrained=False)
-        self.regressor = nn.Conv2d(21, out_channels, kernel_size=1)
-
-    def forward(self, x):
-        out = self.backbone(x)
-        return self.regressor(out["out"])
-
-    def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=1e-3)
-    
-    def training_step(self, batch, batch_idx):
-        data, label = batch
-        pred = self(data)
-        loss = torch.nn.functional.cross_entropy(pred, label)
-        return loss
-    
-    def validation_step(self, batch, batch_idx):
-        loss = self.training_step(batch, batch_idx)
-        self.log("val_loss", loss)
 
 def save_img(path: str, image: torch.Tensor):
     image = image.squeeze().permute(1, 2, 0).cpu().detach().numpy()
@@ -39,19 +15,25 @@ def save_img(path: str, image: torch.Tensor):
         image = np.concatenate([image, zero], axis=-1)
     plt.imsave("results/prova/" + path, image)
 
+
+transforms = SegmentationTransforms(True, True, True)
 # dataset = S2RGBDataset(resolution=60, load_into_memory=False)
-dataset = S2RGBCloudlessExolabDataset(resolution=60, load_into_memory=False)
+# dataset = S2RawCloudlessExolabDataset(bands=["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B10", "B11", "B12"], resolution=60, load_into_memory=True)
+dataset = S2RawCloudlessExolabDataset(bands=["B12", "B8",  "B4"], resolution=10, load_into_memory=False, transforms=transforms)
+class_weights = dataset.get_class_weights()
 train_dataset, val_dataset = random_split(dataset, [0.7, 0.3], generator=torch.Generator().manual_seed(42))
-train_dataloader = DataLoader(train_dataset, 8)
-val_dataloader = DataLoader(val_dataset, 8, shuffle=False)
-# model = SegNetLite(out_classes=3)
-model = DeepLabV3Baseline(3)
+train_dataset.dataset.train()
+val_dataset.dataset.eval()
+train_dataloader = DataLoader(train_dataset, 96)
+val_dataloader = DataLoader(val_dataset, 96, shuffle=False)
+model = SegNetLite(out_classes=3, class_weights=class_weights)
+# model = DeepLabV3Baseline(3)
 
 trainer = pl.Trainer(logger=None, max_epochs=50, accelerator="gpu", devices=1)
 trainer.fit(model, train_dataloader, val_dataloader)
 # model = model.load_from_checkpoint("checkpoints/epoch=49-step=1400.ckpt")
 
-def save_predictions(dataset, model, num_images, folder):
+def save_predictions(dataset: S2Dataset, model: torch.nn.Module, num_images: int, folder: str):
     sequential_loader = DataLoader(dataset, batch_size=num_images, shuffle=False)
     for batch in sequential_loader:
         first_images = batch

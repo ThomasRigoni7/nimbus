@@ -1,9 +1,26 @@
-from s2data import S2Data
+from datasets.s2data import S2Data
 from pathlib import Path
 import rasterio
 import numpy as np
 
 class S2RawData(S2Data):
+    band_to_index = {
+        "CLD_PRB": 0,
+        "SNW_PRB": 1,
+        "B1": 2,
+        "B2": 3,
+        "B3": 4,
+        "B4": 5,
+        "B5": 6,
+        "B6": 7,
+        "B7": 8,
+        "B8": 9,
+        "B9": 10,
+        "B10": 11,
+        "B11": 12,
+        "B12": 13,
+        "B8A": 14
+    }
     def __init__(self, dataset_dir = Path("data/raw/"), data_dir = Path("data/raw/raw_processed/"), resolution: int = 10):
         super().__init__(dataset_dir, resolution)
         image_paths = list(data_dir.glob("*"))
@@ -31,8 +48,12 @@ class S2RawData(S2Data):
          - 12: B11
          - 13: B12
          - 14: B8A
+         try B4-8-12
+         B2 - 3- 12
         """
         bands = list(self.images[image].glob("*.jp2"))
+        if len(bands) != 15 and len(l) != 13:
+            raise RuntimeError(f"Number of bands is not 13 (raw image) or 15 (raw image + SNW/CLD_PROB): found {len(l)}.")
         bands.sort()
         l = []
         for b in bands:
@@ -41,7 +62,10 @@ class S2RawData(S2Data):
                 # check if interpolation is necessary
                 img = self._convert_full_img_to_resolution(img, pixel_resolution)
                 l.append(img)
+        if len(l) == 13:
+            l = [np.full_like(l[0], np.nan, dtype=np.double)] * 2 + l
         res = np.stack(l)
+        
         return res
 
     def _standardize(self, imgs: np.ndarray) -> np.ndarray:
