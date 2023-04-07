@@ -1,7 +1,9 @@
 from datasets.s2data import S2Data
 from pathlib import Path
 import rasterio
+from rasterio.enums import Resampling
 import numpy as np
+
 
 class S2RawData(S2Data):
     band_to_index = {
@@ -21,7 +23,8 @@ class S2RawData(S2Data):
         "B12": 13,
         "B8A": 14
     }
-    def __init__(self, dataset_dir = Path("data/raw/"), data_dir = Path("data/raw/raw_processed/"), resolution: int = 10):
+
+    def __init__(self, dataset_dir=Path("data/raw/"), data_dir=Path("data/raw/raw_processed/"), resolution: int = 10):
         super().__init__(dataset_dir, resolution)
         image_paths = list(data_dir.glob("*"))
         for image_path in image_paths:
@@ -56,16 +59,15 @@ class S2RawData(S2Data):
             raise RuntimeError(f"Number of bands is not 13 (raw image) or 15 (raw image + SNW/CLD_PROB): found {len(l)}.")
         bands.sort()
         l = []
+        out_size = (self.NATIVE_RESOLUTION * self.NATIVE_DIM) // pixel_resolution
         for b in bands:
             with rasterio.open(b, 'r') as f:
-                img = f.read(1)
-                # check if interpolation is necessary
-                img = self._convert_full_img_to_resolution(img, pixel_resolution)
-                l.append(img)
+                img = f.read(out_shape=(f.count, out_size, out_size), 
+                             resampling=Resampling.bilinear)
+                l.append(img.squeeze())
         if len(l) == 13:
             l = [np.full_like(l[0], np.nan, dtype=np.double)] * 2 + l
         res = np.stack(l)
-        
         return res
 
     def _standardize(self, imgs: np.ndarray) -> np.ndarray:
@@ -85,7 +87,8 @@ class S2RawData(S2Data):
         """
         cld_snw_probs = imgs[:, 0:2]
         other_bands = imgs[:, 2:]
-        cld_snw_probs = (cld_snw_probs.astype(np.float32) / 100).clip(0, 1)
+        if not np.any(cld_snw_probs == np.nan):
+            cld_snw_probs = (cld_snw_probs.astype(np.float32) / 100).clip(0, 1)
 
         other_bands = (other_bands.astype(np.float32) / 15000).clip(0, 1)
         # other_bands = self._standardize(other_bands)
@@ -99,6 +102,7 @@ class S2RawData(S2Data):
 def _test():
     s2data = S2RawData()
     # s2data._load_and_save_dataset(512, 32)
+
 
 if __name__ == "__main__":
     _test()

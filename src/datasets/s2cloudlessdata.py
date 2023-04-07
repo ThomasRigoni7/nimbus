@@ -2,8 +2,8 @@ from datasets.s2data import S2Data
 from pathlib import Path
 import rasterio
 from rasterio.windows import Window
+from rasterio.enums import Resampling
 import numpy as np
-import matplotlib.pyplot as plt
 
 class S2CloudlessData(S2Data):
     def __init__(self, dataset_dir = Path("data/S2cloudless/"), data_dir = Path("data/S2cloudless/data/"), resolution: int = 10):
@@ -18,9 +18,11 @@ class S2CloudlessData(S2Data):
         Loads the full image in the specified resolution, resizing the bands at different resolution.
         S2 cloudless data has some buffer pixels at (1 pixel up and left, 2 right, more in the bottom)
         """
+        out_size = (self.NATIVE_RESOLUTION * self.NATIVE_DIM) // pixel_resolution
         with rasterio.open(self.images[image], "r") as f:
-            img = f.read(window=Window(1, 1, self.NATIVE_DIM, self.NATIVE_DIM))
-            img = self._convert_full_img_to_resolution(img, pixel_resolution)
+            img = f.read(window=Window(1, 1, self.NATIVE_DIM, self.NATIVE_DIM),
+                         out_shape=(f.count, out_size, out_size),
+                         resampling=Resampling.bilinear)
             return img
 
     def _normalize(self, imgs: np.ndarray):
@@ -29,6 +31,9 @@ class S2CloudlessData(S2Data):
         return ret
 
     def preprocess(self, imgs: np.ndarray) -> np.ndarray:
+        """
+        Returns normalized images in range [0, 1] of shape [num_images, 1, height, width]
+        """
         if imgs.ndim == 2:
             imgs = imgs[None, None:]
         elif imgs.ndim == 3:
