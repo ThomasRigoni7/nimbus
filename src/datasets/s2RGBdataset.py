@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from datasets.s2rawdata import S2RawData
 from datasets.s2dataset import S2Dataset
 
@@ -19,12 +20,16 @@ class S2RGBDataset(S2Dataset):
     def __getitem__(self, index) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Returns a tuple containing (RGB image, label), where the RGB image is taken from the raw data,
-        the label is 2-dimentional [cloud, snow] built using the provided 2A masks.
+        the label is 3-dimentional [cloud, snow, no_snow] built using the provided 2A masks.
         """
         sample_data = super().__getitem__(index)
         raw = sample_data[0]
         rgb = raw[4:1:-1]
         label = raw[0:2]
+        no_snow = np.ones_like(label[0]) * 0.5
+
+        label = np.concatenate([label, no_snow[None,:]], axis=0)
+        label = np.argmax(label, axis=0)
 
         return torch.from_numpy(rgb.copy()), torch.from_numpy(label)
 

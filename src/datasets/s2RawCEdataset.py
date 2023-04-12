@@ -9,20 +9,35 @@ from tqdm import tqdm
 
 class S2RawCloudlessExolabDataset(S2Dataset):
     """
-    Dataset that returns RGB values as data, 3-dim labels of dim [cloud, no-snow, snow] are combined from S2cloudless and exolabs.
+    Dataset that returns the specified raw band values as data, 1-dim labels of values [0-cloud, 1-no-snow, 2-snow] are combined from S2cloudless and exolabs.
     """
-    def __init__(self, bands:list[str]=["B4", "B3", "B2"], resolution:int=10, load_into_memory:bool=False, transforms: SegmentationTransforms = None):
+    def __init__(self, bands:list[str]|str=["B4", "B3", "B2"], resolution:int=10, load_into_memory:bool=False, transforms: SegmentationTransforms = None):
         self.raw_data = S2RawData(resolution=resolution)
         self.cloudless_data = S2CloudlessData(resolution=resolution)
         self.exolabs_data = S2ExolabData(resolution=resolution)
         super().__init__(self.raw_data, [self.cloudless_data, self.exolabs_data], resolution=resolution, load_into_memory=load_into_memory, 
-                         transforms=transforms)
+                         transforms=transforms, use_cut_images=False)
+        if type(bands) == str and bands == "all":
+            bands = ["B1", "B2", "B3", "B4","B5","B6","B7","B8", "B8A", "B9","B10","B11","B12"]
         self.bands = bands
     
+    def _apply_binary_threshold(self, label: torch.Tensor, threshold = 0.5) -> torch.Tensor:
+        """
+        Takes labels in probability and sets them to {0, 1} based on the specified threshold,
+        returns the result as a float32 Tensor
+        """
+        positive = label >= threshold
+        return positive.to(dtype=torch.float32)
+        
+
     def __getitem__(self, index) -> tuple[torch.Tensor, torch.Tensor]:
         """
-        Returns a tuple containing (RGB image, label), where the RGB image is taken from the raw data,
-        the label is 3-dimentional [cloud, no-snow, snow] built using s2cloudless and Exolabs snow classification.
+        Returns a tuple containing (image, label), where the image is taken from the raw data,
+        the label is 1-dimentional tensor of ints with index of class built using s2cloudless and Exolabs snow classification.
+        Labels are:
+         0 - cloud
+         1 - no-snow
+         2 - snow
         """
         sample_data = super().__getitem__(index)
         raw, cloudless, exolabs = sample_data
@@ -35,9 +50,8 @@ class S2RawCloudlessExolabDataset(S2Dataset):
 
         data = torch.from_numpy(np.stack(raw_bands))
         label = torch.from_numpy(np.concatenate([cloudless, exolabs], axis=0))
-
         data, label = self._apply_transforms(data, label)
-
+        label = torch.argmax(label, dim=0)
         return data, label
     
     def get_class_weights(self):
@@ -67,12 +81,8 @@ class S2RawCloudlessExolabDataset(S2Dataset):
                 counts += self._get_label_channel_pixel_counts(labels)
         weights = 1 / counts
         weights = weights / weights.sum()
-        return torch.from_numpy(weights)
+        return torch.from_numpy(weights).float()
         
-
-
-
-
 
 def _test():
     import matplotlib.pyplot as plt

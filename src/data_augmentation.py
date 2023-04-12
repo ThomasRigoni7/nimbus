@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from torchvision.transforms import RandomCrop
 import torchvision.transforms.functional as TF
 
@@ -9,12 +10,22 @@ class SegmentationTransforms:
         self.vflip = vflip
         self.crop_size = crop_size
         self.train = True
+        self.warning_done = False
         
     def set_train(self, train: bool):
         self.train = train
     
-    def apply(self, data: torch.Tensor, labels: torch.Tensor):
-        assert data.shape == labels.shape, "ERROR: Transforming data and labels with different shape!"
+    def apply(self, data: torch.Tensor | np.ndarray, labels: torch.Tensor | np.ndarray):
+        if (not data.shape == labels.shape) and not self.warning_done:
+            response = input(f"""WARNING: Transforming data and labels with different shape!\nData shape:   {data.shape}\nLabels shape: {labels.shape}.\nContinue y/n?(n)""")
+            self.warning_done = True
+            if response.lower() != "y":
+                exit()
+        if isinstance(data, np.ndarray):
+            data = torch.from_numpy(data)
+        if isinstance(labels, np.ndarray):
+            labels = torch.from_numpy(labels)
+
         if self.train:
             if self.crop:
                 i, j, h, w = RandomCrop.get_params(data, (self.crop_size, self.crop_size))

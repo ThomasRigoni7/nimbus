@@ -85,6 +85,7 @@ class S2RawData(S2Data):
         The raw data contains cloud and snow probabilities in the (approximate) range [0, 100] -> normalize,
         the other channels are in (approximate) range [0, 15000] 
         """
+        imgs = self.to_4_dim(imgs)
         cld_snw_probs = imgs[:, 0:2]
         other_bands = imgs[:, 2:]
         if not np.any(cld_snw_probs == np.nan):
@@ -98,6 +99,14 @@ class S2RawData(S2Data):
     def preprocess(self, imgs: np.ndarray) -> np.ndarray:
         return self._normalize(imgs)
 
+    @classmethod
+    def filter_bands(cls, img: np.ndarray, bands: list[str]):
+        ret = []
+        for b in bands:
+            if b not in cls.band_to_index:
+                raise ValueError(f"Unrecognized band: possible options are {list(cls.band_to_index.keys())}, but got {b}.")
+            ret.append(img[cls.band_to_index[b]])
+        return np.stack(ret)
 
 def _test():
     s2data = S2RawData()

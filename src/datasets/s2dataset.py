@@ -4,7 +4,7 @@ from data_augmentation import SegmentationTransforms
 import torch
 from torch.utils.data import Dataset
 import numpy as np
-
+from pathlib import Path
 
 class S2Dataset(Dataset):
     """
@@ -46,6 +46,7 @@ class S2Dataset(Dataset):
                 self.cut_images[id] = cut_images
         self.image_ids = list(self.images.keys())
         self.image_ids.sort()
+        print(len(self.image_ids))
         self.cut_image_ids = list(self.cut_images.keys())
         self.cut_image_ids.sort()
 
@@ -73,11 +74,9 @@ class S2Dataset(Dataset):
         return self.transforms.apply(data, labels)
 
     def eval(self):
-        print("EVAL")
         self.transforms.set_train(False)
 
     def train(self):
-        print("TRAIN")
         self.transforms.set_train(True)
 
     def _get_label_channel_pixel_counts(self, labels: np.ndarray) -> np.ndarray:

@@ -51,26 +51,65 @@ class S2Data(ABC):
         pass
 
     @classmethod
+    def _get_cut_coordinates(cls, image_dim: int, cut_dim: int = 512, cut_overlap: int = 32) -> list[int]:
+        """
+        Returns the coordinates of the top-left corner of square images to cut with a certain dim and overlap.
+        """
+        p = 0
+        new_image_coordinates = []
+        while p < image_dim:
+            p = min(image_dim - cut_dim, p)
+            new_image_coordinates.append(p)
+            if p == image_dim - cut_dim:
+                break
+            p += cut_dim - cut_overlap
+        return new_image_coordinates
+
+    @classmethod
     def _cut_image(cls, image: np.ndarray, cut_dim: int = 512, cut_overlap: int = 32) -> dict[str, np.ndarray]:
         """
         Cuts the image in images of size cut_dim and overlap cut_overlap.
         image is a 3-dim array of shape [channels, height, width]
         """
         images = {}
-        p = 0
-        new_image_coordinates = []
-        while p < image.shape[1]:
-            p = min(image.shape[1] - cut_dim, p)
-            new_image_coordinates.append(p)
-            if p == image.shape[1] - cut_dim:
-                break
-            p += cut_dim - cut_overlap
+        image = cls.to_3_dim(image)
+        assert image.shape[1] == image.shape[2], "Error: cutting rectangular image, not a square."
+
+        new_image_coordinates = cls._get_cut_coordinates(image.shape[1], cut_dim, cut_overlap)
 
         for x, y in product(new_image_coordinates, new_image_coordinates):
             cut = image[:, x:x+cut_dim, y:y+cut_dim]
             if cut.sum() != 0:
                 images[f"{x}_{y}"] = cut
         return images
+    
+    @classmethod
+    def to_3_dim(cls, img: np.ndarray):
+        """
+        Converts the input array to shape [num_channels, height, width]
+        """
+        if img.ndim == 3:
+            return img
+        elif img.ndim == 2:
+            return img[None, :]
+        elif img.ndim == 4:
+            return img.squeeze(axis=0)
+        else:
+            raise ValueError(f"Cannot convert array to 3 dim: shape is {img.shape}.")
+        
+    @classmethod
+    def to_4_dim(cls, img: np.ndarray):
+        """
+        Converts the input array to shape [num_images, num_channels, height, width]
+        """
+        if img.ndim == 4:
+            return img
+        if img.ndim == 2:
+            return img[None, None, :]
+        elif img.ndim == 3:
+            return img[None, :]
+        else:
+            raise ValueError(f"Cannot convert array to 3 dim: shape is {img.shape}.")
 
     def _load_dataset_from_images(self, cut_dim: int = None, cut_overlap: int = None, resolutions=[10, 20, 60], convert_channels:bool=False,
                       save_arrays: bool = False, return_arrays: bool = False, ids_to_load:list[int] = None):
@@ -118,52 +157,59 @@ class S2Data(ABC):
 
         return ret
 
-    def load_arrays(self, resolution: int = 10, ids_to_load: list[str] = None, verbose:bool=True) -> np.ndarray:
+    def load_arrays(self, resolution: int = 10, ids_to_load: list[str] = None, verbose:bool=True, return_dict:bool=False) -> np.ndarray | dict[str, np.ndarray]:
         """
         Loads the specified arrays into memory and returns it. If not specified, load the full data.
 
-        The shape of the returned arrays is [num_images, num_channels, height, width]
+        The returned value is an array of shape [num_images, num_channels, height, width] if return_dict is False (default), 
+        otherwise  a dict[str, np.ndarray] where dict[image_id] is an array of shape [num_channels, height, width]
         """
         if verbose:
             print(f"Loading arrays with {resolution}m resolution...")
-        data = []
-        print(ids_to_load)
+        data = {}
         if ids_to_load is None:
             iterator = list(self.array_locations[resolution].glob("*"))
             if verbose:
                 iterator = tqdm(iterator)
             for f in iterator:
                 if f.is_file():
-                    img = np.load(f)
-                    data.append(img)
+                    img = self.to_3_dim(np.load(f))
+                    data[f.with_suffix("").name] = img
         else:
             if verbose:
                 ids_to_load = tqdm(ids_to_load)
             for id in ids_to_load:
-                data.append(self.load_array(id, resolution=resolution))
-        ret = np.concatenate(data, axis=0)
-        return ret
+                data[id] = self.to_3_dim(self.load_array(id, resolution=resolution))
+        if not return_dict:
+            return np.stack(list(data.values()), axis=0)
+        return data
     
-    def load_array(self, id: str, resolution: int = 10):
+    def load_array(self, id: str, resolution: int = 10) -> np.ndarray:
         """
         Loads the specified data point into memory and returns it.
 
         The shape of the returned array is [1, num_channels, height, width]
         """
         img = np.load(self.array_locations[resolution] / f"{id}.npy")
-        if img.ndim == 2:
-            img = img[None, None, :]
-        elif img.ndim == 3:
-            img = img[None, :]
-        return img
+        return self.to_4_dim(img)
     
-    def load_preprocessed_arrays(self, resolution: int = 10, ids_to_load: list[str] = None, verbose:bool=True):
+    def load_preprocessed_arrays(self, resolution: int = 10, ids_to_load: list[str] = None, verbose:bool=True, return_dict:bool=False):
         """
         Loads the specified arrays into memory, applies preprocess and returns it.
 
-        The shape of the returned array is [num_images, num_channels, height, width]
+        The returned value is an array of shape [num_images, num_channels, height, width] if return_dict is False (default), 
+        otherwise  a dict[str, np.ndarray] where dict[image_id] is an array of shape [num_channels, height, width]
         """
-        images = self.load_arrays(resolution = resolution, ids_to_load=ids_to_load, verbose=verbose)
+        images = self.load_arrays(resolution = resolution, ids_to_load=ids_to_load, verbose=verbose, return_dict=return_dict)
+        if verbose:
+            print("Preprocessing images:")
+        if return_dict:
+            iterator = images.items()
+            if verbose:
+                iterator = tqdm(iterator)
+            for id, img in iterator:
+                images[id] = self.to_3_dim(self.preprocess(img))
+            return images
         return self.preprocess(images)
 
     def _save_image(self, image: np.ndarray, path: Path):

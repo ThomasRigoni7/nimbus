@@ -19,18 +19,24 @@ def save_img(path: str, image: torch.Tensor):
 transforms = SegmentationTransforms(True, True, True)
 # dataset = S2RGBDataset(resolution=60, load_into_memory=False)
 # dataset = S2RawCloudlessExolabDataset(bands=["B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B8A", "B9", "B10", "B11", "B12"], resolution=60, load_into_memory=True)
-dataset = S2RawCloudlessExolabDataset(bands=["B12", "B8",  "B4"], resolution=10, load_into_memory=False, transforms=transforms)
+dataset = S2RawCloudlessExolabDataset(bands="all", resolution=60, load_into_memory=False, transforms=transforms)
 class_weights = dataset.get_class_weights()
-train_dataset, val_dataset = random_split(dataset, [0.7, 0.3], generator=torch.Generator().manual_seed(42))
+train_dataset, val_dataset, test_dataset = random_split(dataset, [0.7, 0.1, 0.2], generator=torch.Generator().manual_seed(42))
 train_dataset.dataset.train()
 val_dataset.dataset.eval()
-train_dataloader = DataLoader(train_dataset, 96)
-val_dataloader = DataLoader(val_dataset, 96, shuffle=False)
-model = SegNetLite(out_classes=3, class_weights=class_weights)
+test_dataset.dataset.eval()
+# print("Train dataset augmented:", train_dataset.dataset.transforms.train)
+# exit()
+BATCH_SIZE = 8
+train_dataloader = DataLoader(train_dataset, BATCH_SIZE)
+val_dataloader = DataLoader(val_dataset, BATCH_SIZE, shuffle=False)
+test_dataloader = DataLoader(test_dataset, BATCH_SIZE, shuffle=False)
+model = SegNetLite(in_channels=13, out_classes=3, class_weights=class_weights)
 # model = DeepLabV3Baseline(3)
 
 trainer = pl.Trainer(logger=None, max_epochs=50, accelerator="gpu", devices=1)
 trainer.fit(model, train_dataloader, val_dataloader)
+trainer.test(model, test_dataset)
 # model = model.load_from_checkpoint("checkpoints/epoch=49-step=1400.ckpt")
 
 def save_predictions(dataset: S2Dataset, model: torch.nn.Module, num_images: int, folder: str):
@@ -57,4 +63,4 @@ def save_predictions(dataset: S2Dataset, model: torch.nn.Module, num_images: int
         save_img(f"{folder}/label{i}.png", labels[i])
 
 save_predictions(train_dataset, model, 10, "train")
-save_predictions(val_dataset, model, 10, "val")
+save_predictions(test_dataset, model, 10, "test")
