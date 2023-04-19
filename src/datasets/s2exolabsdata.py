@@ -18,13 +18,13 @@ class S2ExolabData(S2Data):
             date = image_path.name[9:19].replace("-", "")
             self.images[date] = image_path
 
-    def _load_full_image(self, image: str, pixel_resolution: int = 10):
+    def _load_full_image(self, image_path: str, pixel_resolution: int = 10):
         """
         Loads the full image in the specified resolution, resizing the bands at different resolution.
         Exolabs data has some buffer pixels at (1 pixel up and left, 2 right, more in the bottom)
         """
         out_size = (self.NATIVE_RESOLUTION * self.NATIVE_DIM) // pixel_resolution
-        with rasterio.open(self.images[image], "r") as f:
+        with rasterio.open(str(image_path), "r") as f:
             img = f.read(window=Window(1, 1, self.NATIVE_DIM, self.NATIVE_DIM),
                          out_shape=(f.count, out_size, out_size),
                          resampling=Resampling.nearest)

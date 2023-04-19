@@ -29,7 +29,7 @@ class S2Data(ABC):
                     self.cut_images[id] = path
 
     @abstractmethod
-    def _load_full_image(self, image: str, pixel_resolution: int = 10) -> np.ndarray:
+    def _load_full_image(self, image_path_or_dir: str, pixel_resolution: int = 10) -> np.ndarray:
         """
         Loads the full image (all bands) in the specified resolution, resizing the bands at different resolution.
         """
@@ -136,7 +136,7 @@ class S2Data(ABC):
             iterator = ids_to_load
         for id in tqdm(iterator):
             for res in resolutions:
-                img = self._load_full_image(id, pixel_resolution=res)
+                img = self._load_full_image(self.images[id], pixel_resolution=res)
                 if convert_channels:
                     img = self._convert_channels(img[None, :]).squeeze(0)
                 if cut_dim is None:

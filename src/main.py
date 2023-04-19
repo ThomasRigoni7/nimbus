@@ -56,16 +56,16 @@ def get_loaders(images, labels, ALlabels, test_labels, train_ids, batch_size: in
                                       ALlabels=ALlabels, additional_layers=["altitude", "treecover"])
     train_dataset, val_dataset, test_dataset = ALdataset.get_datasets(0.8)
 
-    for id, img, label in val_dataset:
-        path = Path(f"results/AL/{id[0]}.png")
-        path.parent.mkdir(exist_ok=True, parents=True)
-        plt.imsave(path, img[:3].numpy().transpose([1, 2, 0]))
+    # for id, img, label in val_dataset:
+    #     path = Path(f"results/AL/{id[0]}.png")
+    #     path.parent.mkdir(exist_ok=True, parents=True)
+    #     plt.imsave(path, img[:3].numpy().transpose([1, 2, 0]))
 
     train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=num_workers)
     val_loader = DataLoader(val_dataset, batch_size, shuffle=False, num_workers=num_workers)
     # TODO: implement test loader
     # test_loader = DataLoader(test_dataset, batch_size, shuffle=True)
-    return train_loader, val_loader, None
+    return train_dataset, val_dataset, None
 
 def load_models(checkpoint_path: Path = None):
     """
@@ -114,9 +114,11 @@ def get_AL_samples(model: SegnetWithIndex, dataloader, ensemble_dim: int = 16):
     model.set_ensemble_dim(ensemble_dim)
     trainer = pl.Trainer(devices=1, accelerator="gpu", logger=None)
     predictions = trainer.predict(model, dataloader, return_predictions=True)
-    print(len(predictions))
-    predictions = predictions[0]
-    uncertainty_masks, uncertainty_values = predictions
+    uncertainty_masks = {}
+    uncertainty_values = {}
+    for masks, values in predictions:
+        uncertainty_masks.update(masks)
+        uncertainty_values.update(values)
     sorted_values = sorted(uncertainty_values.items(), key=lambda x: x[1], reverse=True)
     print(len(sorted_values))
     results_directory = Path("results/AL/")
@@ -128,7 +130,7 @@ def get_AL_samples(model: SegnetWithIndex, dataloader, ensemble_dim: int = 16):
         # plt.imshow(uncertainty_masks[id])
         # plt.show()
     model.set_ensemble_dim(0)
-    return predictions
+    return uncertainty_masks, sorted_values
 
 def main(args):
     # 1) load datasets and dataloader
@@ -137,12 +139,12 @@ def main(args):
     #   3.1) every i epochs, interactively label some samples from the net and save new labels
     #   3.2) continue training adding new samples and replacing manual labels (put different weight in sampler?)
     #   3.3) 
-    images, labels, ALlabels, test_labels, train_ids = load_data(60)
+    images, labels, ALlabels, test_labels, train_ids = load_data(10)
     train_loader, val_loader, test_loader = get_loaders(images, labels, ALlabels, test_labels, train_ids)
-    model = load_models("checkpoints/epoch=59-step=1800.ckpt")
-    # model = load_models(None)
-    # train_test_model(model, train_loader, val_loader, test_loader, epochs=60)
-    pred = get_AL_samples(model, val_loader)
+    # model = load_models("checkpoints/epoch=59-step=1800.ckpt")
+    model = load_models(None)
+    train_test_model(model, train_loader, val_loader, test_loader, epochs=30)
+    uncertainty_masks, sorted_unc_values = get_AL_samples(model, val_loader)
 
 
 

@@ -138,7 +138,7 @@ class ActiveLearningDataset(Dataset):
         """
         assert 0 <= train_ratio <= 1
         train_images, val_images, train_labels, val_labels = {}, {}, {}, {}
-        train_dataset, val_dataset = random_split(self, [train_ratio, 1-train_ratio])
+        train_dataset, val_dataset = random_split(self, [train_ratio, 1-train_ratio], generator=torch.Generator().manual_seed(42))
         train_loader = DataLoader(train_dataset, shuffle=False, num_workers=os.cpu_count())
         val_loader = DataLoader(val_dataset, shuffle=False, num_workers=os.cpu_count())
         

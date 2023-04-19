@@ -31,7 +31,7 @@ class S2RawData(S2Data):
             date = image_path.name[:8]
             self.images[date] = image_path
 
-    def _load_full_image(self, image: str, pixel_resolution: int = 10) -> np.ndarray:
+    def _load_full_image(self, image_dir: Path | str, pixel_resolution: int = 10) -> np.ndarray:
         """
         Loads the full image (all bands) in the specified resolution, resizing the bands at different resolution.
         
@@ -54,7 +54,8 @@ class S2RawData(S2Data):
          try B4-8-12
          B2 - 3- 12
         """
-        bands = list(self.images[image].glob("*.jp2"))
+        image_dir = Path(image_dir)
+        bands = list(image_dir.glob("*.jp2"))
         if len(bands) != 15 and len(l) != 13:
             raise RuntimeError(f"Number of bands is not 13 (raw image) or 15 (raw image + SNW/CLD_PROB): found {len(l)}.")
         bands.sort()
