@@ -1,5 +1,6 @@
 from pathlib import Path
 import numpy as np
+import torch
 from tqdm import tqdm
 from abc import ABC, abstractmethod
 from itertools import product
@@ -84,7 +85,7 @@ class S2Data(ABC):
         return images
     
     @classmethod
-    def to_3_dim(cls, img: np.ndarray):
+    def to_3_dim(cls, img: np.ndarray|torch.Tensor):
         """
         Converts the input array to shape [num_channels, height, width]
         """
@@ -98,7 +99,7 @@ class S2Data(ABC):
             raise ValueError(f"Cannot convert array to 3 dim: shape is {img.shape}.")
         
     @classmethod
-    def to_4_dim(cls, img: np.ndarray):
+    def to_4_dim(cls, img: np.ndarray|torch.Tensor):
         """
         Converts the input array to shape [num_images, num_channels, height, width]
         """

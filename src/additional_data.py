@@ -14,6 +14,14 @@ additional_data_filenames = {
     "landcover": "32TNS_30m_landcover_CORINE_2018.tif",
     "treecover": "32TNS_30m_treeCanopyCover.tif"
 }
+additional_data_normalization_values = {
+    "lakes": 1,
+    "glaciers": 1,
+    "surface_water": 1,
+    "altitude": 5000,
+    "landcover": 255,
+    "treecover": 100
+}
 
 def convert_additional_data(additional_data_dir: str | Path = Path("data/auxilliary_data"), save_files=True) -> dict[str, np.ndarray]:
     """
@@ -35,7 +43,18 @@ def convert_additional_data(additional_data_dir: str | Path = Path("data/auxilli
         ds = None
     return ret
 
-def load_additional_data(processed_dir: str | Path = Path("data/auxilliary_data/processed/"), res=10) -> dict[str, np.ndarray]:
+def normalize_additional_data(data: dict[str, np.ndarray]):
+    """
+    Brings all the values of additional data images to the range [0, 1]
+    """
+    ret = {}
+
+    for id, img in data.items():
+        ret[id] = img.astype(np.float32) / additional_data_normalization_values[id]
+
+    return ret
+
+def load_additional_data(processed_dir: str | Path = Path("data/auxilliary_data/processed/"), res=10, normalize:bool=True) -> dict[str, np.ndarray]:
     """
     loads additional data like lakes, glaciers, surface water and altitude.
     Returns all the images in shape [height, width].
@@ -48,14 +67,16 @@ def load_additional_data(processed_dir: str | Path = Path("data/auxilliary_data/
             ds = gdal.Translate("/vsimem/in_memory_output.tif", ds, xRes = res, yRes=res)
         ret[name] = ds.ReadAsArray()
         ds = None
+    if normalize:
+        ret = normalize_additional_data(ret)
     return ret
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    additional_data = convert_additional_data()
-    # data = load_additional_data()
-    # for name, img in data.items():
-    #     print(img.shape)
-    #     plt.imshow(img)
-    #     plt.title(name)
-    #     plt.show()
+    # additional_data = convert_additional_data()
+    data = load_additional_data()
+    for name, img in data.items():
+        print(img.shape)
+        plt.imshow(img)
+        plt.title(name)
+        plt.show()
