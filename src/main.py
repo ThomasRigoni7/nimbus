@@ -3,7 +3,7 @@
 import argparse
 import numpy as np
 import torch
-from segnet import SegNetLite, SegnetWithIndex
+from models import ModelWithIndex
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from pytorch_lightning.loggers.wandb import WandbLogger
@@ -16,13 +16,20 @@ import matplotlib.pyplot as plt
 
 from data_augmentation import SegmentationTransforms
 
-IN_CHANNELS = 5
+IN_CHANNELS = 15
+DROPOUT_PROB = 0.10
 OUT_CLASSES = 4
-DROPOUT_PROB = 0.1
+RESOLUTION = 60
+AL_IMAGES = 10
 
 def parse_arguments():
     parser = argparse.ArgumentParser("Trains a model using active learning: the network trains on an initial guess of the labels given by the ExoLabs and s2cloudless classification and later based on the training loss we select samples for which the network is most unsure and re-label them by hand (possibly increasing their weight).")
     
+    parser.add_argument("--nolog", help="Disable run logging (currently on wandb).", action="store_true")
+    parser.add_argument("--epochs", type=int, default=70)
+    parser.add_argument("--model", type=str, required=True, help="Architecture to train", choices=["segnet", "deeplabv3", "unet", "fpn", "psp"])
+    parser.add_argument("-bs", "--batch_size", type=int, help="Batch size used in training", default=32)
+
     args = parser.parse_args()
     return args
 
@@ -41,76 +48,72 @@ def load_data(resolution: int = 10) -> tuple:
     labels = np.load(f"data/labels/cloudless_exolabs_water/{resolution}m.npz")
     labels = {id:torch.from_numpy(label).squeeze(0) for id, label in labels.items()}
     # load possible AL labels, test labels
-    ALlabels = None
-    test_labels = None
+    ALlabels = {}
+    ALlabels_dir = Path("data/labels/AL")
+    for path in ALlabels_dir.glob("*"):
+        ALlabels[path.name] = torch.from_numpy(np.load(path))
+    print(f"Loaded {len(ALlabels)} AL labels!")
+    test_labels = {}
+    test_labels_dir = Path("data/labels/test")
+    for path in test_labels_dir.glob("*"):
+        test_labels[path.name] = torch.from_numpy(np.load(path))
+    print(f"Loaded {len(test_labels)} test labels!")
     # load train indexes of "well" labeled images from file
     with open("image_ids.yaml") as f:
         id_dict = yaml.safe_load(f)
-    # train_ids = id_dict["train"]
-    train_ids = list(images.keys())
+    train_ids = id_dict["train"]
+    # train_ids = list(images.keys())
     return images, labels, ALlabels, test_labels, train_ids
 
 def get_loaders(images, labels, ALlabels, test_labels, train_ids, batch_size: int = 32, img_dim:int = 512, num_workers: int = 0):
     transforms = SegmentationTransforms(False, True, True)
-    ALdataset = ActiveLearningDataset(images, labels, img_dim, train_ids, test_labels, 
-                                      ALlabels=ALlabels, additional_layers=["altitude", "treecover"])
-    train_dataset, val_dataset, test_dataset = ALdataset.get_datasets(0.8)
+    ALdataset = ActiveLearningDataset(images, labels, img_dim, train_ids, test_labels, input_bands="all",
+                                      ALlabels=ALlabels, additional_layers=["altitude", "treecover"], transforms=transforms)
+    train_dataset, val_dataset, test_dataset, class_weights = ALdataset.get_datasets(0.8)
 
     # for id, img, label in val_dataset:
     #     path = Path(f"results/AL/{id[0]}.png")
     #     path.parent.mkdir(exist_ok=True, parents=True)
     #     plt.imsave(path, img[:3].numpy().transpose([1, 2, 0]))
 
-    train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=num_workers)
+    train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=num_workers, drop_last=True)
     val_loader = DataLoader(val_dataset, batch_size, shuffle=False, num_workers=num_workers)
     # TODO: implement test loader
     # test_loader = DataLoader(test_dataset, batch_size, shuffle=True)
-    return train_dataset, val_dataset, None
+    return train_loader, val_loader, None, class_weights
 
-def load_models(checkpoint_path: Path = None):
+def load_models(model: str, checkpoint_path: Path = None, in_channels:int=IN_CHANNELS, out_classes:int=OUT_CLASSES, class_weights:torch.Tensor=None):
     """
-    Loads the models, either an ensemble of SegNets for proposing AL candidates or a single (DeepLabV3+)
+    Loads the models, either a SegNet or DeepLabV3+ for proposing AL candidates.
     """
-    # if load_ensemble:
-    #     checkpoints_dir = Path("checkpoints/ALensemble/")
-    #     ensemble = [SegNetLite(in_channels=IN_CHANNELS ,out_classes=OUT_CLASSES) for _ in num_base_models]
-    #     if checkpoints_dir.exists():
-    #         # load the most recent checkpoints
-    #         dirs = list(checkpoints_dir.glob("*"))
-    #         if len(dirs) == 0:
-    #             return ensemble
-    #         dirs.sort()
-    #         last_dir = dirs[-1]
-    #         checkpoint_paths = list(last_dir.glob("*"))
-    #         assert len(checkpoint_paths) == len(ensemble), "Error, number of checkpoints is different from number of base models!"
-    #         for segnet, path in zip(ensemble, checkpoint_paths):
-    #             segnet = SegNetLite.load_from_checkpoint(path)
-    #         return ensemble
-
+    args = {}
     if checkpoint_path is None:
-        return SegnetWithIndex(in_channels=IN_CHANNELS ,out_classes=OUT_CLASSES, dropout_prob=DROPOUT_PROB)
+        return ModelWithIndex(model, in_channels, out_classes, class_weights, model_args=args, dropout=DROPOUT_PROB)
     else:
-        return SegnetWithIndex.load_from_checkpoint(checkpoint_path)
-    # 0.207, 0.74
-    return SegnetWithIndex(
-        kernel_sizes=[3, 3, 3, 3, 3, 3],
-        down_filter_sizes=[32, 64, 128, 256, 256, 512],
-        up_filter_sizes=[256, 256, 128, 64, 32, 32],
-        conv_paddings=[1, 1, 1, 1, 1, 1],
-        pooling_kernel_sizes=[2, 2, 2, 2, 2, 2],
-        pooling_strides=[2, 2, 2, 2, 2, 2],
-        in_channels=IN_CHANNELS ,out_classes=OUT_CLASSES)
-    # 0.214 -> miou: 0.71
+        return ModelWithIndex.load_from_checkpoint(checkpoint_path)
 
-def train_test_model(model, train_dataloader, val_dataloader, test_dataloader, epochs):
-    logger = WandbLogger(name=f"base segnet p={DROPOUT_PROB}", project="nimbus", save_dir="checkpoints/AL/")
+def train_test_model(model, train_dataloader, val_dataloader, test_dataloader, epochs, log:bool = True):
+    if log:
+        logger = WandbLogger(name=f"unet++", project="nimbus", save_dir="checkpoints/AL/")
+    else:
+        logger = None
     trainer = pl.Trainer(logger=logger, max_epochs=epochs, devices=1, accelerator="gpu")
     trainer.fit(model, train_dataloader, val_dataloader)
     if test_dataloader is not None:
         trainer.test(model, test_dataloader)
     return model
 
-def get_AL_samples(model: SegnetWithIndex, dataloader, ensemble_dim: int = 16):
+def predict(model: ModelWithIndex, dataloader: DataLoader):
+    print("Calculating predictions...")
+    trainer = pl.Trainer(devices=1, accelerator="gpu", logger=None)
+    predictions = trainer.predict(model, dataloader, return_predictions=True)
+    ret = {}
+    for p in predictions:
+        ret.update(p)
+    return ret
+
+
+def get_AL_samples(model: ModelWithIndex, dataloader, ensemble_dim: int = 16):
     model.set_ensemble_dim(ensemble_dim)
     trainer = pl.Trainer(devices=1, accelerator="gpu", logger=None)
     predictions = trainer.predict(model, dataloader, return_predictions=True)
@@ -120,17 +123,32 @@ def get_AL_samples(model: SegnetWithIndex, dataloader, ensemble_dim: int = 16):
         uncertainty_masks.update(masks)
         uncertainty_values.update(values)
     sorted_values = sorted(uncertainty_values.items(), key=lambda x: x[1], reverse=True)
-    print(len(sorted_values))
+    print(sorted_values[0])
     results_directory = Path("results/AL/")
     results_directory.mkdir(exist_ok=True)
-    for id, value in sorted_values:
-        print("ID:", id)
-        print("Uncertainty:", value)
-        plt.imsave(results_directory / f"{id}_uncertainty.png", uncertainty_masks[id])
-        # plt.imshow(uncertainty_masks[id])
-        # plt.show()
     model.set_ensemble_dim(0)
     return uncertainty_masks, sorted_values
+
+def save_AL_images(images: dict[str, torch.Tensor], labels: dict[str, torch.Tensor], uncertainty_masks: dict[str, torch.Tensor], sorted_values: list[tuple[str, float]], predictions: dict[str, torch.Tensor]):
+    AL_dir = Path("AL/prova/")
+    saved_images = []
+    (AL_dir / "uncertainties").mkdir(exist_ok=True, parents=True)
+    (AL_dir / "images").mkdir(exist_ok=True)
+    (AL_dir / "labels").mkdir(exist_ok=True)
+    (AL_dir / "predictions").mkdir(exist_ok=True)
+    for id, value in sorted_values[:AL_IMAGES]:
+        full_image_id = id.split("/")[0]
+        unc_file = AL_dir / (f"uncertainties/{id}_%.4f.npy" % value)
+        (AL_dir / f"uncertainties/{id}").parent.mkdir(exist_ok=True)
+        (AL_dir / f"predictions/{id}").parent.mkdir(exist_ok=True)
+        np.save(unc_file, uncertainty_masks[id].detach().numpy())
+        np.save(AL_dir / f"predictions/{id}.npy", predictions[id].detach().numpy())
+        if full_image_id not in saved_images:
+            saved_images.append(full_image_id)
+            rgb_image = np.transpose(images[full_image_id].detach().numpy() [5:2:-1], [1, 2, 0])
+            np.save(AL_dir / f"images/{full_image_id}.npy", rgb_image)
+            np.save(AL_dir / f"labels/{full_image_id}.npy", labels[full_image_id].detach().numpy())
+
 
 def main(args):
     # 1) load datasets and dataloader
@@ -139,12 +157,14 @@ def main(args):
     #   3.1) every i epochs, interactively label some samples from the net and save new labels
     #   3.2) continue training adding new samples and replacing manual labels (put different weight in sampler?)
     #   3.3) 
-    images, labels, ALlabels, test_labels, train_ids = load_data(10)
-    train_loader, val_loader, test_loader = get_loaders(images, labels, ALlabels, test_labels, train_ids)
-    # model = load_models("checkpoints/epoch=59-step=1800.ckpt")
-    model = load_models(None)
-    train_test_model(model, train_loader, val_loader, test_loader, epochs=30)
+    images, labels, ALlabels, test_labels, train_ids = load_data(RESOLUTION)
+    train_loader, val_loader, test_loader, class_weights = get_loaders(images, labels, ALlabels, test_labels, train_ids, batch_size=args.batch_size)
+    # model = load_models("checkpoints/AL/nimbus/p7bjtmz3/checkpoints/epoch=69-step=1050.ckpt")
+    model = load_models(args.model, None, class_weights=class_weights)
+    train_test_model(model, train_loader, val_loader, test_loader, epochs=args.epochs, log = not args.nolog)
     uncertainty_masks, sorted_unc_values = get_AL_samples(model, val_loader)
+    predictions = predict(model, val_loader)
+    save_AL_images(images, labels, uncertainty_masks, sorted_unc_values, predictions)
 
 
 

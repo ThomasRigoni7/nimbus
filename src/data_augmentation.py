@@ -17,10 +17,8 @@ class SegmentationTransforms:
     
     def apply(self, data: torch.Tensor | np.ndarray, labels: torch.Tensor | np.ndarray):
         if (not data.shape == labels.shape) and not self.warning_done:
-            response = input(f"""WARNING: Transforming data and labels with different shape!\nData shape:   {data.shape}\nLabels shape: {labels.shape}.\nContinue y/n?(n)""")
+            print(f"""\nWARNING: Transforming data and labels with different shape!\nData shape:   {data.shape}\nLabels shape: {labels.shape}.\n""")
             self.warning_done = True
-            if response.lower() != "y":
-                exit()
         if isinstance(data, np.ndarray):
             data = torch.from_numpy(data)
         if isinstance(labels, np.ndarray):

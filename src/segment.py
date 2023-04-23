@@ -4,7 +4,6 @@ from torch.utils.data import DataLoader
 import numpy as np
 from pathlib import Path
 import argparse
-from segnet import SegNetLite
 from datasets import S2RawData, S2Data, ActiveLearningDataset
 import pytorch_lightning as pl
 from main import load_models
@@ -38,7 +37,7 @@ def predict(model: nn.Module, image: torch.Tensor) -> dict[str, torch.Tensor]:
     model.return_predict_probabilities = True
     image_dict = {"image": image}
     ALdataset = ActiveLearningDataset(image_dict, None, 512, training_ids=list(image_dict.keys()), additional_layers=["altitude", "treecover"], test_labels=None)
-    _, dataset, _ = ALdataset.get_datasets(0)
+    _, dataset, _, _ = ALdataset.get_datasets(0)
     loader = DataLoader(dataset, BATCH_SIZE, shuffle=False)
     trainer = pl.Trainer(devices=1, accelerator="gpu", logger=None)
     predictions = trainer.predict(model, loader, return_predictions=True)
@@ -55,14 +54,11 @@ def merge_predictions(predictions: dict[str, torch.Tensor], original_size: int):
         x_y = id.split("/")[-1]
         x, y = x_y.split("_")
         x, y = int(x), int(y)
-        print(id)
-        print(x, y)
-        print()
         full_image[:, x:x+h, y:y+w] += pred
         image_counts[:, x:x+h, y:y+w] += 1
     segmentation_mask = torch.argmax(full_image / image_counts, dim=0)
-    plt.imshow(segmentation_mask.numpy())
-    plt.show()
+    # plt.imshow(segmentation_mask.numpy())
+    # plt.show()
     return segmentation_mask.to(dtype=torch.uint8)
 
 def save_prediction(segmentation_mask: torch.Tensor, img_dir: Path | str, path_to_save: Path | str, res: int = 10):
@@ -103,9 +99,9 @@ if __name__ == "__main__":
     args = parse_arguments()
     full_image = load_image(args.img_dir, args.resolution)
     initial_dim = full_image.shape[-1]
-    model = load_models(args.model)
-    preds = predict(model, full_image)
-    final_segmentation = merge_predictions(preds, initial_dim)
+    model = load_models(None, args.model)
+    ret = predict(model, full_image)
+    final_segmentation = merge_predictions(ret, initial_dim)
     # show_prediction(full_image, final_segmentation)
     save_prediction(final_segmentation, args.img_dir, args.out, res=args.resolution)
 

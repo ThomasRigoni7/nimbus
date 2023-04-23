@@ -42,13 +42,13 @@ class ActiveLearningDataset(Dataset):
         self.input_bands = input_bands
         self.training_ids = training_ids
         self.test_labels = test_labels
+        self.original_img_dim = self.images[self.training_ids[0]].shape[-1]
         if test_labels is not None:
             self.update_labels(test_labels)
         if ALlabels is not None:
             self.update_labels(ALlabels)
             self.update_training_ids(list(ALlabels.keys()))
         self.transforms = transforms
-        self.original_img_dim = self.images[self.training_ids[0]].shape[-1]
         self.additional_data = load_additional_data(res = S2Data.NATIVE_RESOLUTION * S2Data.NATIVE_DIM / self.original_img_dim)
         self.additional_layers = additional_layers
         # manually checked that it is not worth it to calculate loss masks (very few pixels masked in whole dataset)
@@ -129,12 +129,13 @@ class ActiveLearningDataset(Dataset):
         mask = torch.any(img == 0, dim=0)            
         return mask
 
-    def get_datasets(self, train_ratio: float = 0.8):
+    def get_datasets(self, train_ratio: float = 0.8, compute_class_weights:bool=True):
         """
         Creates and returns the train, validation and test datasets.
         Train and validation are randomly sampled cuts from the images in the "train labels",
         If the test_labels parameter at initialization was None, returns a None object as the test_dataset.
 
+        Returns also the class weights to appy to the loss function as the inverse of the frequency of pixels belonging to the class.
         """
         assert 0 <= train_ratio <= 1
         train_images, val_images, train_labels, val_labels = {}, {}, {}, {}
@@ -160,7 +161,24 @@ class ActiveLearningDataset(Dataset):
         print("Len val dataset:", len(val_dataset))
 
         # TODO: process and return the test dataset.
-        return train_dataset, val_dataset, None
+
+
+        # loss weights
+        if compute_class_weights:
+            print("Computing class weights...")
+            for label in train_labels.values():
+                num_classes = label.max() + 1
+                break
+            counts = torch.tensor([0]*num_classes)
+            for c in range(num_classes):
+                for label in train_labels.values():
+                    counts[c] += torch.count_nonzero(label == c)
+            class_weights = 1 / counts
+            class_weights = class_weights / class_weights.sum()
+            print("Done!")
+            return train_dataset, val_dataset, None, class_weights
+        else:
+            return train_dataset, val_dataset, None, None
 
     def __len__(self):
         return len(self.index2id)
