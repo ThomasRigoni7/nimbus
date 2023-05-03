@@ -187,7 +187,6 @@ class ModelWithIndex(PLModel):
         Returns a tuple[dict[str, torch.Tensor], dict[str, float]] containing the uncertainty masks and values.
         """
         ids, data, labels = batch
-        ids = ids[0]
         del labels
         self.set_dropout(True)
         predictions = {id:[] for id in ids}
@@ -221,11 +220,11 @@ class ModelWithIndex(PLModel):
             preds = self.model(data)
             segmentation_masks = torch.argmax(preds, dim=1).to(dtype=torch.uint8)
             # show_image(data[0][:3], labels[0], segmentation_masks[0])
-            assert len(ids[0]) == len(data) == len(labels) == len(segmentation_masks)
+            assert len(ids) == len(data) == len(labels) == len(segmentation_masks), f"Error: different lengths. \nids: {len(ids[0])}, data: {len(data)}, labels: {len(labels)}, seg mask: {len(segmentation_masks)}"
             if self.return_predict_probabilities:
-                ret = {id:p for id, p in zip(ids[0], preds.cpu())}
+                ret = {id:p for id, p in zip(ids, preds.cpu())}
             else:
-                ret = {id:p for id, p in zip(ids[0], segmentation_masks.cpu())}
+                ret = {id:p for id, p in zip(ids, segmentation_masks.cpu())}
             return ret
         else:
             raise ValueError(f"ensemble_dim must be >= 0! Found {self.ensemble_dim}")

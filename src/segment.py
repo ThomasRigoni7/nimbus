@@ -18,9 +18,9 @@ OUT_CLASSES = 4
 # add command line options
 def parse_arguments():
     parser = argparse.ArgumentParser("Script used to segment a full raw image from L1C satellite images.")
-    parser.add_argument("-img_dir", type=str, default="data/raw/raw_processed/20210710T101559")
+    parser.add_argument("-img_dir", type=str, default="data/raw/raw_processed/20210126T102311")
     parser.add_argument("-out", type=str, default="segmentation.tif")
-    parser.add_argument("-model", type=str, default="checkpoints/epoch=59-step=1800.ckpt")
+    parser.add_argument("-model", type=str, default="checkpoints/AL/nimbus/gg9extyu/checkpoints/epoch=69-step=29610.ckpt")
     parser.add_argument("--resolution", type=int, choices=[10, 20, 60], default=10)
     parser.add_argument("--cut_dim", type=int, default=512)
     parser.add_argument("--cut_offset", type=int, default=32)
@@ -36,8 +36,8 @@ def predict(model: nn.Module, image: torch.Tensor) -> dict[str, torch.Tensor]:
     model = model.to(DEVICE)
     model.return_predict_probabilities = True
     image_dict = {"image": image}
-    ALdataset = ActiveLearningDataset(image_dict, None, 512, training_ids=list(image_dict.keys()), additional_layers=["altitude", "treecover"], test_labels=None)
-    _, dataset, _, _ = ALdataset.get_datasets(0)
+    ALdataset = ActiveLearningDataset(image_dict, None, 512, training_ids=list(image_dict.keys()), input_bands="all", additional_layers=["altitude", "treecover"], test_labels={})
+    _, dataset, _, _, _= ALdataset.get_datasets([], [], [], 0, compute_class_weights=False)
     loader = DataLoader(dataset, BATCH_SIZE, shuffle=False)
     trainer = pl.Trainer(devices=1, accelerator="gpu", logger=None)
     predictions = trainer.predict(model, loader, return_predictions=True)

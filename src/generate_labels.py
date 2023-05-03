@@ -3,8 +3,9 @@ import numpy as np
 from tqdm import tqdm
 from additional_data import load_additional_data
 import matplotlib.pyplot as plt
+from pathlib import Path
 
-res = 60
+res = 10
 
 
 def compute_CE_labels(cloudless_img: np.ndarray, exolabs_img: np.ndarray):
@@ -64,4 +65,6 @@ for id in tqdm(cloudless_dataset[res]):
     label = compute_CE_water_labels(cloudless_img, exolab_img, additional_data["surface_water"])
     labels[res][id] = label
 print("saving npz...")
+path = f"data/labels/cloudless_exolabs_water/{res}m.npz"
+Path(path).parent.mkdir(exist_ok=True)
 np.savez(f"data/labels/cloudless_exolabs_water/{res}m.npz", **labels[res])
