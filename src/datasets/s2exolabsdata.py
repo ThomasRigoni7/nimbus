@@ -9,8 +9,8 @@ import numpy as np
 class S2ExolabData(S2Data):
 
     def __init__(self,
-                 dataset_dir=Path("data/ExoLabs_classification_S2/"),
-                 data_dir=Path("data/ExoLabs_classification_S2/data/"),
+                 dataset_dir=Path("data/ExoLabs_classification_S2/32TNS/"),
+                 data_dir=Path("data/ExoLabs_classification_S2/32TNS/data/"),
                  resolution: int = 10):
         super().__init__(dataset_dir, resolution)
         image_paths = list(data_dir.glob("*.tif"))
@@ -35,9 +35,13 @@ class S2ExolabData(S2Data):
         converts the images from categorical labels to multi-channel: 
         creates new channels with values of 0/1 where the appropriate label is met.
 
+        For simplicity the dark_features are considered no-snow.
+
         returns an array with 2 channels: [no-snow, snow] and 4 dims in total: [images, channels, width, height]
         """
         no_snow = images[:, 1] == 1
+        dark_regions = images[:, 0] == 2
+        no_snow = np.logical_or(no_snow, dark_regions)
         snow = images[:, 1] == 2
         return np.stack([no_snow, snow]).swapaxes(0, 1).astype(np.float32)
 

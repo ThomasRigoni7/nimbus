@@ -1,0 +1,1 @@
+systemd-run --scope -p MemoryMax=1800G --user python3 src/main.py $@

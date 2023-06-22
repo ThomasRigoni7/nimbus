@@ -1,0 +1,3 @@
+python src/segment.py -model checkpoints/AL/final/deeplabAL.ckpt -img_dir data/raw/raw_processed/20210205T102221 -out predictions/20210205_deeplab_AL.tif
+python src/segment.py -model checkpoints/AL/final/fpn_5.ckpt -img_dir data/raw/raw_processed/20210205T102221 -out predictions/20210205_fpn5.tif
+python src/segment.py -model checkpoints/AL/final/fpn_6_finetune.ckpt -img_dir data/raw/raw_processed/20210205T102221 -out predictions/20210205_fpn_finetune.tif

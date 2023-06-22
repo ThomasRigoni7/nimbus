@@ -33,6 +33,7 @@ class ActiveLearningDataset(Dataset):
                  ALlabels: dict[str, torch.Tensor] = None,
                  input_bands: list[str] = ["B12", "B8", "B4"],
                  transforms: SegmentationTransforms = None, 
+                 image_overlap: int = 32,
                  additional_layers: list[str] = []):
         super().__init__()
         self.images = images
@@ -41,6 +42,7 @@ class ActiveLearningDataset(Dataset):
         if type(input_bands) == str and input_bands == "all":
             input_bands = ["B1", "B2", "B3", "B4","B5","B6","B7","B8", "B8A", "B9","B10","B11","B12"]
         self.input_bands = input_bands
+        self.cut_overlap = image_overlap
         self.test_labels = test_labels
         self.full_train_val_ids = training_ids
         self.original_img_dim = self.images[training_ids[0]].shape[-1]
@@ -93,7 +95,7 @@ class ActiveLearningDataset(Dataset):
         
         The final indexes are of the form {image_id}/{height}_{width}
         """
-        cut_coordinates = S2Data._get_cut_coordinates(self.original_img_dim, cut_dim=self.img_dim)
+        cut_coordinates = S2Data._get_cut_coordinates(self.original_img_dim, cut_dim=self.img_dim, cut_overlap=self.cut_overlap)
         ret = []
         for id in full_img_ids:
             for h, w in product(cut_coordinates, cut_coordinates):
@@ -156,7 +158,14 @@ class ActiveLearningDataset(Dataset):
         mask = torch.any(img == 0, dim=0)            
         return mask
 
-    def get_datasets(self, train_cut_ids: list[str], val_cut_ids: list[str], test_cut_ids: list[str], train_ratio: float = 0.8, compute_class_weights:bool=True, num_classes:int=4):
+    def get_datasets(self, 
+                    train_cut_ids: list[str], 
+                    val_cut_ids: list[str], 
+                    test_cut_ids: list[str], 
+                    train_ratio: float = 0.8, 
+                    compute_class_weights:bool=True, 
+                    num_classes:int=4,
+                    build_dataset=[True, True, True, True]):
         """
         Creates and returns the train, validation, test and AL datasets.
 
@@ -167,6 +176,8 @@ class ActiveLearningDataset(Dataset):
         AL dataset contains all the images that are not in either the train, eval or test.
 
         Returns also the class weights to appy to the loss function as the inverse of the frequency of pixels belonging to the class.
+
+        Build_dataset specifies which datasets must be created. Default: all.
         """
         if train_cut_ids is None:
             train_cut_ids = []
@@ -177,64 +188,70 @@ class ActiveLearningDataset(Dataset):
             assert 0 <= train_ratio <= 1
             train_images, val_images, train_labels, val_labels = {}, {}, {}, {}
             train_dataset, val_dataset = random_split(self, [train_ratio, 1-train_ratio], generator=torch.Generator().manual_seed(42))
-            train_loader = DataLoader(train_dataset, shuffle=False, num_workers=os.cpu_count() // 4)
-            val_loader = DataLoader(val_dataset, shuffle=False, num_workers=os.cpu_count() // 4)
             
-            print("Building train dataset...")
-            for batch in train_loader:
-                (id,), image, label, mask = batch
-                train_images[id] = image.squeeze(0)
-                train_labels[id] = label.squeeze()
-            
-            print("Building validation dataset...")
-            for batch in val_loader:
-                (id,), image, label, mask = batch
-                val_images[id] = image.squeeze(0)
-                val_labels[id] = label.squeeze()
-        else:
-            print("Building train dataset...")
-            train_images, train_labels = {}, {}
-            # Need also to inject the AL labels
-            train_cut_ids = train_cut_ids + self.cut_AL_train_ids
-            print(f"Added {len(self.cut_AL_train_ids)} manually segmented images from {len(self.cut_AL_train_ids)} tiles.")
-            # remove duplicates by converting to dict and then back to list
-            train_cut_ids = list(dict.fromkeys(train_cut_ids))
-            for id in tqdm(train_cut_ids):
-                _, image, label, _ = self[id]
-                train_images[id] = image
-                train_labels[id] = label
+            if build_dataset[0]:
+                print("Building train dataset...")
+                train_loader = DataLoader(train_dataset, shuffle=False, num_workers=os.cpu_count() // 4)
+                for batch in train_loader:
+                    (id,), image, label, mask = batch
+                    train_images[id] = image.squeeze(0)
+                    train_labels[id] = label.squeeze()
 
-            print("Building validation dataset...")
+            if build_dataset[1]:
+                print("Building validation dataset...")
+                val_loader = DataLoader(val_dataset, shuffle=False, num_workers=os.cpu_count() // 4)
+                for batch in val_loader:
+                    (id,), image, label, mask = batch
+                    val_images[id] = image.squeeze(0)
+                    val_labels[id] = label.squeeze()
+        else:
+            train_images, train_labels = {}, {}
+            if build_dataset[0]:
+                # Need also to inject the AL labels
+                print("Building train dataset...")
+                train_cut_ids = train_cut_ids + self.cut_AL_train_ids
+                print(f"Added {len(self.cut_AL_train_ids)} manually segmented images.")
+                # remove duplicates by converting to dict and then back to list
+                train_cut_ids = list(dict.fromkeys(train_cut_ids))
+                for id in tqdm(train_cut_ids):
+                    _, image, label, _ = self[id]
+                    train_images[id] = image
+                    train_labels[id] = label
+
             val_images, val_labels = {}, {}
-            for id in tqdm(val_cut_ids):
-                _, image, label, _ = self[id]
-                val_images[id] = image
-                val_labels[id] = label
+            if build_dataset[1]:
+                print("Building validation dataset...")
+                for id in tqdm(val_cut_ids):
+                    _, image, label, _ = self[id]
+                    val_images[id] = image
+                    val_labels[id] = label
             
         # test dataset
-        print("Building test dataset...")
         test_images, test_labels = {}, {}
-        for id in tqdm(test_cut_ids):
-            _, image, label, _ = self[id]
-            test_images[id] = image
-            test_labels[id] = label
+        if build_dataset[2]:
+            print("Building test dataset...")
+            for id in tqdm(test_cut_ids):
+                _, image, label, _ = self[id]
+                test_images[id] = image
+                test_labels[id] = label
 
         # AL dataset
-        print("Building AL dataset...")
         AL_images, AL_labels = {}, {}
-        full_image_AL_ids = list(self.images.keys())
-        to_remove = self.full_train_val_ids + list(self.test_labels.keys())
-        for id_to_remove in to_remove:
-            full_image_AL_ids.remove(id_to_remove)
-        AL_cut_ids = self.calculate_cut_indexes(full_image_AL_ids)
-        # remove the cut indeces in the AL_train dataset
-        for id_to_remove in self.cut_AL_train_ids:
-            AL_cut_ids.remove(id_to_remove)
+        if build_dataset[3]:
+            print("Building AL dataset...")
+            full_image_AL_ids = list(self.images.keys())
+            to_remove = self.full_train_val_ids + list(self.test_labels.keys())
+            for id_to_remove in to_remove:
+                full_image_AL_ids.remove(id_to_remove)
+            AL_cut_ids = self.calculate_cut_indexes(full_image_AL_ids)
+            # remove the cut indeces in the AL_train dataset
+            for id_to_remove in self.cut_AL_train_ids:
+                AL_cut_ids.remove(id_to_remove)
 
-        for id in tqdm(AL_cut_ids):
-            _, image, label, _ = self[id]
-            AL_images[id] = image
-            AL_labels[id] = label
+            for id in tqdm(AL_cut_ids):
+                _, image, label, _ = self[id]
+                AL_images[id] = image
+                AL_labels[id] = label
 
         train_dataset = AugmentedDataset(train_images, train_labels, transforms=self.transforms)
         val_dataset = AugmentedDataset(val_images, val_labels)
@@ -336,10 +353,10 @@ class AugmentedDataset(Dataset):
 
 
 class dataLoaderDataset(Dataset):
-    def __init__(self, res) -> None:
+    def __init__(self, res, log_normalize=False) -> None:
         super().__init__()
         self.res = res
-        self.raw_data = S2RawData()
+        self.raw_data = S2RawData(log_normalize=log_normalize)
         self.image_paths = self.raw_data.images
         self.index2id = list(self.image_paths.keys())
 

@@ -101,15 +101,15 @@ class SegNetLite(pl.LightningModule):
     
 
 class PLModel(pl.LightningModule):
-    def __init__(self, model: nn.Module, out_classes: int, class_weights: torch.Tensor):
+    def __init__(self, model: nn.Module, out_classes: int, class_weights: torch.Tensor, lr:float=1e-3):
         super(PLModel, self).__init__()
         self.model = model
-        
+        self.lr = lr
         self.miou = JaccardIndex("multiclass", num_classes=out_classes)
         self.criterion = nn.CrossEntropyLoss(weight=class_weights, reduction="none")
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.model.parameters(), lr=1e-3)
+        return torch.optim.Adam(self.model.parameters(), lr=self.lr)
     
     def common_step(self, batch):
         data, label = batch
@@ -139,7 +139,7 @@ class PLModel(pl.LightningModule):
         return loss
 
 class ModelWithIndex(PLModel):
-    def __init__(self, model: str, in_channels: int, out_classes: int, class_weights: torch.Tensor, model_args: dict = {}, dropout:float=0):
+    def __init__(self, model: str, in_channels: int, out_classes: int, class_weights: torch.Tensor, model_args: dict = {}, dropout:float=0, lr:float=1e-3):
         self.save_hyperparameters()
         if model == "segnet":
             model_args.update({"dropout_prob": dropout})
@@ -155,7 +155,7 @@ class ModelWithIndex(PLModel):
             model_args.update({"psp_dropout": dropout})
             backbone = smp.PSPNet(in_channels=in_channels, classes=out_classes, **model_args, encoder_weights=None)
 
-        super().__init__(backbone, out_classes, class_weights)
+        super().__init__(backbone, out_classes, class_weights, lr)
         self.ensemble_dim = 0
         self.return_predict_probabilities = False
 

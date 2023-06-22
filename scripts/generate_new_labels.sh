@@ -1,0 +1,3 @@
+python src/generate_labels.py data/ExoLabs_classification_S2/07VEH data/labels/cloudless_exolabs_water/07VEH/ -tile 07VEH -cloudless_folder data/new_data/S2cloudless_07VEH -masked
+python src/generate_labels.py data/ExoLabs_classification_S2/13TDE data/labels/cloudless_exolabs_water/13TDE/ -tile 13TDE -cloudless_folder data/new_data/S2cloudless_13TDE -masked
+python src/generate_labels.py data/ExoLabs_classification_S2/32VMP data/labels/cloudless_exolabs_water/32VMP/ -tile 32VMP -cloudless_folder data/new_data/S2cloudless_32VMP -masked

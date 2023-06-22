@@ -1,4 +1,8 @@
-data/
-qgis/
-
+data
+checkpoints
+results
+tests
+AL/
+predictions
+prediction_differences
 __pycache__/

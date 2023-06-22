@@ -7,13 +7,16 @@ from models import ModelWithIndex
 from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from pytorch_lightning.loggers.wandb import WandbLogger
-from datasets import dataLoaderDataset, ActiveLearningDataset
+from datasets import dataLoaderDataset, ActiveLearningDataset, S2Data
 from pathlib import Path
 import os
 import yaml
 from tqdm import tqdm
 
+import seaborn as sns
+import matplotlib
 import matplotlib.pyplot as plt
+sns.set(style='darkgrid')
 
 from data_augmentation import SegmentationTransforms
 from load_test_data import load_test_labels
@@ -21,10 +24,16 @@ from load_test_data import load_test_labels
 IN_CHANNELS = 15
 DROPOUT_PROB = 0.10
 OUT_CLASSES = 4
-AL_IMAGES = 20
+AL_IMAGES = 2
 CUT_IMAGE_DIM = 512
+LR = 1e-3
+
+args = None
 
 def parse_arguments():
+    global DROPOUT_PROB
+    global LR
+
     parser = argparse.ArgumentParser("Trains a model using active learning: the network trains on an initial guess of the labels given by the ExoLabs and s2cloudless classification and later based on the training loss we select samples for which the network is most unsure and re-label them by hand (possibly increasing their weight).")
     
     parser.add_argument("--nolog", help="Disable run logging (currently on wandb).", action="store_true")
@@ -32,28 +41,40 @@ def parse_arguments():
     parser.add_argument("--model", type=str, required=True, help="Architecture to train", choices=["segnet", "deeplabv3", "unet", "fpn", "psp"])
     parser.add_argument("-c", "--checkpoint", type=str, help="checkpoint file to load.")
     parser.add_argument("-bs", "--batch_size", type=int, help="Batch size used in training", default=32)
+    parser.add_argument("-lr", type=float, help="learning rate", default=1e-3)
     parser.add_argument("--res", type=int, help="resolution to load the labels", choices=[10, 20, 60], default=10)
+    parser.add_argument("--dropout", type=float, help="Dropout probability", default=DROPOUT_PROB)
+    parser.add_argument("--log_normalize", help="If set, log normalize the images", action="store_true")
+
+    parser.add_argument("--labels_path", help="folder containing the <res>m.npz label file", default=f"data/labels/cloudless_exolabs_water/32TNS/10m.npz")
+    parser.add_argument("--AL_labels_dir", help="folder containing the AL sample labels", default="data/labels/AL")
+    parser.add_argument("--test_labels_dir", help="folder containing the test labels", default="data/labels/test")
+    
 
     args = parser.parse_args()
+
+    DROPOUT_PROB = args.dropout  
+    LR = args.lr  
+
     return args
 
-def load_data(resolution: int = 10) -> tuple:
+def load_data(resolution: int = 10, log_normalize:bool=False) -> tuple:
     """
     Uses Dataloader multiprocessing to load the images faster
     """
     print("Loading images...")
-    dataset = dataLoaderDataset(resolution)
-    loader = DataLoader(dataset, batch_size=1, num_workers=os.cpu_count(), shuffle=False)
+    dataset = dataLoaderDataset(resolution, log_normalize)
+    loader = DataLoader(dataset, batch_size=1, num_workers=32, shuffle=False)
     images = []
     for batch in tqdm(loader):
         images.append((batch))
     images = {key:value.squeeze(0) for d in images for key, value in d.items()}
     print("Loading labels...")
-    labels = np.load(f"data/labels/cloudless_exolabs_water/{resolution}m.npz")
+    labels = np.load(args.labels_path)
     labels = {id:torch.from_numpy(label).squeeze(0) for id, label in labels.items()}
     # load possible AL labels, they are 512x512 images of the form date_x_y.npy
     ALlabels = {}
-    ALlabels_dir = Path("data/labels/AL")
+    ALlabels_dir = Path(args.AL_labels_dir)
     for path in ALlabels_dir.glob("*"):
         name = path.with_suffix("").name
         date, x, y = name.split("_")
@@ -62,7 +83,7 @@ def load_data(resolution: int = 10) -> tuple:
     print(f"Loaded {len(ALlabels)} AL labels!")
     # load test labels if res = 10
     if resolution == 10:
-        test_labels, test_cut_ids = load_test_labels()
+        test_labels, test_cut_ids = load_test_labels(Path(args.test_labels_dir))
     else:
         test_labels = {}
         test_cut_ids = []
@@ -109,15 +130,16 @@ def get_loaders(images, labels, ALlabels, test_labels, train_ids, test_cut_ids, 
     AL_loader = DataLoader(AL_dataset, batch_size, shuffle=False, num_workers=num_workers) if AL_dataset is not None else None
     return train_loader, val_loader, test_loader, AL_loader, class_weights
 
-def load_models(model: str, checkpoint_path: Path = None, in_channels:int=IN_CHANNELS, out_classes:int=OUT_CLASSES, class_weights:torch.Tensor=None):
+def load_models(model: str, checkpoint_path: Path = None, in_channels:int=IN_CHANNELS, out_classes:int=OUT_CLASSES, class_weights:torch.Tensor=None, dropout=DROPOUT_PROB, lr=LR):
     """
     Loads the model specified and returns it.
 
     If a checkpoint path is specified, ignores all other parameters and loads the model checkpoint at that location.
     """
     if checkpoint_path is None:
-        return ModelWithIndex(model, in_channels, out_classes, class_weights, model_args={}, dropout=DROPOUT_PROB)
+        return ModelWithIndex(model, in_channels, out_classes, class_weights, model_args={}, dropout=dropout, lr=lr)
     else:
+        print("Loading model from checkpoint at:", checkpoint_path)
         return ModelWithIndex.load_from_checkpoint(checkpoint_path)
 
 def train_test_model(model, train_dataloader, val_dataloader, test_dataloader, epochs, log:bool = True):
@@ -178,6 +200,51 @@ def save_AL_images(images: dict[str, torch.Tensor], labels: dict[str, torch.Tens
         np.save(AL_dir / f"images/{full_image_id}_{x_y}_rgb.npy", rgb_image)
         np.save(AL_dir / f"images/{full_image_id}_{x_y}_false_color.npy", false_color_image)
         np.save(AL_dir / f"labels/{full_image_id}_{x_y}.npy", labels[full_image_id].detach().numpy()[x:x+CUT_IMAGE_DIM, y:y+CUT_IMAGE_DIM])
+    
+    save_uncertainty_plots(uncertainty_masks, sorted_values, AL_dir)
+
+
+def save_uncertainty_plots(uncertainty_masks: dict[str, torch.Tensor], unc_values: list[tuple[str, float]], dir:Path):
+
+    print("saving uncertainty plots...")
+    unc_vals_year = torch.zeros((12, 31))
+    image_count_year = torch.zeros((12, 31))
+    # calculate the uncertainty for each day
+    
+    for cut_id, unc_value in unc_values:
+        full_id = cut_id.split("/")[0]
+        assert len(full_id) == 8, f"Full image id has unexpected format: {full_id}"
+        month = int(full_id[4:6]) - 1
+        day = int(full_id[6:8]) - 1
+        unc_vals_year[month][day] += unc_value
+        image_count_year[month][day] += 1    
+    unc_vals_year[image_count_year != 0] /= image_count_year[image_count_year != 0]
+
+    ax = sns.heatmap(unc_vals_year.numpy())
+    ax.set(xlabel="Day of the month", ylabel="Month")
+    ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(1))
+    plt.title("Uncertainty measures over the year")
+    plt.tight_layout()
+    plt.savefig(dir / "unc_year.svg")
+
+    # calculate the mean uncertainty for each pixel in the full tile.
+    img_dim = S2Data.NATIVE_DIM * S2Data.NATIVE_RESOLUTION // args.res
+
+    unc_vals_tile = torch.zeros((img_dim, img_dim))
+    pixel_count_tile = torch.zeros((img_dim, img_dim))
+    for cut_id, unc_mask in uncertainty_masks.items():
+        x_y = cut_id.split("/")[1]
+        x, y = [int(v) for v in x_y.split("_")]
+        unc_vals_tile[x:x+unc_mask.shape[0], y:y+unc_mask.shape[1]] += unc_mask
+        pixel_count_tile[x:x+unc_mask.shape[0], y:y+unc_mask.shape[1]] += 1
+
+    unc_vals_tile[pixel_count_tile != 0] /= pixel_count_tile[pixel_count_tile != 0]
+    plt.clf()
+    plt.axis("off")
+    ax2 = sns.heatmap(unc_vals_tile.numpy())
+    plt.tight_layout()
+    plt.savefig(dir / "unc_tile.png")
+    np.save(dir / "unc_tile.npy", unc_vals_tile.numpy())
 
 
 def main(args):
@@ -187,14 +254,14 @@ def main(args):
     #   3.1) every i epochs, interactively label some samples from the net and save new labels
     #   3.2) continue training adding new samples and replacing manual labels (put different weight in sampler?)
     #   3.3) 
-    images, labels, ALlabels, test_labels, train_ids, test_cut_ids = load_data(args.res)
+    images, labels, ALlabels, test_labels, train_ids, test_cut_ids = load_data(args.res, args.log_normalize)
     train_loader, val_loader, test_loader, AL_loader, class_weights = get_loaders(images, labels, ALlabels, test_labels, train_ids, test_cut_ids, batch_size=args.batch_size, res = args.res)
     # model = load_models("checkpoints/AL/nimbus/p7bjtmz3/checkpoints/epoch=69-step=1050.ckpt")
-    model = load_models(args.model, None, class_weights=class_weights)
+    model = load_models(args.model, args.checkpoint, class_weights=class_weights)
     train_test_model(model, train_loader, val_loader, test_loader, epochs=args.epochs, log = not args.nolog)
-    uncertainty_masks, sorted_unc_values = get_AL_samples(model, AL_loader)
-    predictions = predict(model, AL_loader)
-    save_AL_images(images, labels, uncertainty_masks, sorted_unc_values, predictions)
+    # uncertainty_masks, sorted_unc_values = get_AL_samples(model, AL_loader)
+    # predictions = predict(model, AL_loader)
+    # save_AL_images(images, labels, uncertainty_masks, sorted_unc_values, predictions)
 
 
 
