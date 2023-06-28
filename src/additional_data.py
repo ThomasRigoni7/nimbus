@@ -5,6 +5,7 @@ Script to load and convert the additional data into new files with 10m resolutio
 from pathlib import Path
 import numpy as np
 import gdal
+import argparse
 
 gdal.UseExceptions()
 
@@ -86,11 +87,9 @@ def load_additional_data(processed_dir: str | Path = Path("data/auxilliary_data/
     return ret
 
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    additional_data = convert_additional_data(tile="32VMP")
-    # data = load_additional_data()
-    # for name, img in data.items():
-    #     print(img.shape)
-    #     plt.imshow(img)
-    #     plt.title(name)
-    #     plt.show()
+    parser = argparse.ArgumentParser(description="Script used to convert the additional data to full resolution and then load it.")
+    parser.add_argument("--dir", help="directory containing the additional data files. The processed ones will be saved in <dir>/processed.", default="data/auxilliary_data")
+    parser.add_argument("--tile", help="tile code (e.g. 32TNS) of the files to convert", default="data/auxilliary_data")
+    args = parser.parse_args()
+
+    additional_data = convert_additional_data(additional_data_dir=Path(args.dir), tile=args.tile)

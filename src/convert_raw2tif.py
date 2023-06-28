@@ -13,7 +13,7 @@ def save_image_geotif(image: np.ndarray, img_dir: Path | str, path_to_save: Path
     if len(image) != 3:
         raise ValueError("Length of image is not 3: cannot use it as RGB.")
     single_band_image = list(Path(img_dir).glob("*"))[0]
-    print("Saving prediction to disk!")
+    print("Saving image to disk...")
     ds = gdal.Open(str(single_band_image))
     ds = gdal.Translate("/vsimem/in_memory_output.tif", ds, xRes = res, yRes=res)
     in_band = ds.GetRasterBand(1)

@@ -1,6 +1,6 @@
 # Nimbus
 
-semantic segmentation of Sentinel 2 satellite Images.
+semantic segmentation of Sentinel 2 satellite images.
 
 # Installation
 
@@ -65,6 +65,8 @@ The training process requires multiple steps:
    - manually segment the images with `src/image_visualizer.py`
    - move the newly generated labels into the `data/labels/AL` folder and restart `src/main.py` with the appropriate parameters.
 
+
+
 ### Download
 Labels for this project were derived from the ExoLabs classification (and optionally the S2 cloudless classification) in conjunction with the aforementioned surface water mask. These can be downloaded from the Earth Engine via:
 
@@ -105,7 +107,9 @@ The `src/generate_labels.py` script will generate a `<resolution>m.npz` file int
 
 The training loop is managed by `src/main.py`:
 
+the `src/main.py` script will automatically load the `image_ids.yaml` and `cut_image_ids_<res>.yaml` containing respectively the full image train/validation ids (opposed to the ones in the Active Learning and test set) and the cut sample ids of the train/validation splits (512 pixels wide). If you are not using images from the 32TNS tile in 2022, then you may want to delete these files and generate your owns. `image_ids.yaml` should contain the ids (dates) of images used for training and validation purposes, while `cut_image_ids_<res>.yaml` contains the full list of cut image ids present in the train and validation sets; if not present these will be automatically generated at random with a 80/20% train/validation proportion. 
+
 ```bash
 python src/main.py --model <model architecture>
 ```
-will automatically initialize a new model with the specified architecture (one between `segnet`, `deeplabv3`, `unet`, `fpn`, `psp`), load all the images and labels into memory.
+will automatically initialize a new model with the specified architecture (one between `segnet`, `deeplabv3`, `unet`, `fpn`, `psp`), load all the images and labels into memory, train and test the model, compute the most uncertain samples and save them together with label, prediction and uncertainty mask in the `AL/last_run` folder.

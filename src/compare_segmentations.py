@@ -152,7 +152,7 @@ def load_labels(path:str|Path):
     return labels
     
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Script used to segment a full raw image from L1C satellite images.")
+    parser = argparse.ArgumentParser(description="Script used to compare predictions and labels.")
     parser.add_argument("pred_dir", type=str)
     parser.add_argument("labels_path", type=str)
     parser.add_argument("-out_dir", type=str, default="prediction_differences/last_comparison/")
