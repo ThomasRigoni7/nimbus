@@ -6,3 +6,5 @@ AL/
 predictions
 prediction_differences
 __pycache__/
+comparisons/
+comparisons_unmasked/

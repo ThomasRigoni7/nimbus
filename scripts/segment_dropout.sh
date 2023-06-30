@@ -1,0 +1,2 @@
+python src/segment.py -model checkpoints/AL/nimbus/3fxgdi2t/checkpoints/epoch=69-step=29610.ckpt -img_dir data/raw/raw_processed/20211227T102339 -out predictions/20211227_pred0_d05.tif
+python src/segment.py -model checkpoints/AL/nimbus/x6u1x35a/checkpoints/epoch=69-step=29610.ckpt -img_dir data/raw/raw_processed/20211227T102339 -out predictions/20211227_pred0_d50.tif

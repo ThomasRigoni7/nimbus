@@ -113,3 +113,25 @@ the `src/main.py` script will automatically load the `image_ids.yaml` and `cut_i
 python src/main.py --model <model architecture>
 ```
 will automatically initialize a new model with the specified architecture (one between `segnet`, `deeplabv3`, `unet`, `fpn`, `psp`), load all the images and labels into memory, train and test the model, compute the most uncertain samples and save them together with label, prediction and uncertainty mask in the `AL/last_run` folder.
+
+### Note on pre-trained models
+
+The models accept as input 15 bands in this order: 
+ - B01
+ - B02
+ - B03
+ - B04
+ - B05
+ - B06
+ - B07
+ - B06
+ - B09
+ - B10
+ - B11
+ - B12
+ - B8A
+ - DEM altitude
+ - Tree canopy cover
+
+Most models are trained with threshold scaling pre-processing method and must be also used during inference with the same method.
+The images used to train the models use the processing baseline 4, which is different from the one used on the most recent S2 images (from the beginning of 2022). It has been confirmed empirically that the new processing baseline is incompatible with the old one and predictions on images with different processing methods are extremely inaccurate.

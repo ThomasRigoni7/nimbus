@@ -75,16 +75,20 @@ class S2RawData(S2Data):
         return res
 
     def _load_full_image_tif(self, image_path: Path | str, pixel_resolution: int = 10) -> np.ndarray:
+        """
+        Load a full image as downloaded from the Earth Engine, some of the images had also the QA60 band, so account for 13 or 14 bands. 
+        It was downloaded as the last one, so no difference in selected band indeces is needed.
+        """
         assert Path(image_path).is_file()
         out_size = (self.NATIVE_RESOLUTION * self.NATIVE_DIM) // pixel_resolution
         with rasterio.open(image_path, 'r') as f:
-            print(f.descriptions)
             img = f.read(out_shape=(f.count, out_size, out_size), resampling=Resampling.bilinear, 
                          window=rasterio.windows.Window(1, 1, self.NATIVE_DIM, self.NATIVE_DIM))
-            if len(img) != 13:
+            if len(img) == 13 or len(img) == 14:
+                band_indeces = [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 8]
+            else:
                 raise RuntimeError(f"Found strange number of bands: {len(img)}.")
-            print(img.shape)
-            img = img[[0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 8], :, :]
+            img = img[band_indeces, :, :]
         l = [np.full_like(img[0:2], np.nan, dtype=np.double), img]
         res = np.concatenate(l)
         return res

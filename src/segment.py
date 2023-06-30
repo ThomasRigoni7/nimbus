@@ -179,6 +179,6 @@ def predict_all_dataset(model_path, data_path, out_folder, res, cut_dim, tile:st
     predict_and_save_segmentation(img_dirs, model_path, outs, res, cut_dim, tile=tile)
 
 if __name__ == "__main__":
-    args = parse_arguments()
-    predict_and_save_segmentation([args.img_dir], args.model, [args.out], args.resolution, args.cut_dim, args.log_normalize, args.tile)
-    # predict_all_dataset("checkpoints/AL/final/fpn_5.ckpt", "data/new_data/32TNS", "predictions/fpn_5/32TNS_new", 10, 512)
+    # args = parse_arguments()
+    # predict_and_save_segmentation([args.img_dir], args.model, [args.out], args.resolution, args.cut_dim, args.log_normalize, args.tile)
+    predict_all_dataset("checkpoints/AL/final/fpn_5.ckpt", "data/new_data/32TNS/new", "predictions/fpn_5/32TNS_new", 10, 512)
